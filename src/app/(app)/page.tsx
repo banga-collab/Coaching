@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AlertTriangle, CalendarCheck2, CalendarDays, ChevronRight, ClipboardList, HeartPulse, Plus, TrendingUp, Users } from "lucide-react";
+import { AlertTriangle, CalendarCheck, CalendarCheck2, CalendarDays, ChevronRight, ClipboardList, HeartPulse, ListChecks, MessageCircle, Plus, Receipt, TrendingUp, Users } from "lucide-react";
+import { ShortcutTile, StatTile } from "@/components/stat-tile";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/auth";
 import { healthAlerts, latestBy } from "@/lib/insights";
 import type { Client, HealthCheck, Measurement, Session } from "@/lib/types";
 import { addDays, dayKey, fmtDate, fmtTime, signed, startOfWeek } from "@/lib/utils";
-import { Avatar, Badge, Card, CardHeader, Empty, Kpi, LinkButton, PageHeader } from "@/components/ui";
+import { Avatar, Badge, Card, CardHeader, Empty, LinkButton } from "@/components/ui";
 import { WeeklyBars } from "@/components/charts";
 
 export default async function Dashboard() {
@@ -75,29 +76,93 @@ export default async function Dashboard() {
   const firstName = (profile.full_name || "Coach").split(" ")[0];
   const delta = thisWeek.length - lastWeek.length;
 
+  // Séries hebdomadaires (6 semaines) pour les mini-courbes
+  const weekRanges = Array.from({ length: 6 }, (_, i) => {
+    const s = addDays(week0, (i - 5) * 7);
+    return [s, addDays(s, 7)] as const;
+  });
+  const inWeek = (iso: string, [s, e]: readonly [Date, Date]) => new Date(iso) >= s && new Date(iso) < e;
+  const attendanceSeries = weekRanges.map((r) => {
+    const p = sessions.filter((s) => inWeek(s.starts_at, r) && (s.status === "realisee" || s.status === "absent"));
+    return p.length ? Math.round((p.filter((s) => s.status === "realisee").length / p.length) * 100) : 100;
+  });
+  const activeSeries = weekRanges.map((r) => new Set(sessions.filter((s) => inWeek(s.starts_at, r) && s.status === "realisee").map((s) => s.client_id)).size);
+  const healthSeries = weekRanges.map(([s, e]) => health.filter((h) => new Date(h.checked_on) >= s && new Date(h.checked_on) < e).length);
+  const attDelta = attendanceSeries.length > 1 ? attendanceSeries.at(-1)! - attendanceSeries.at(-2)! : 0;
+
+  // Raccourcis des modules
+  const today0 = now.toISOString().slice(0, 10);
+  const month0 = today0.slice(0, 8) + "01";
+  const [{ count: tasksDue }, { count: unread }, { count: bookings }, { data: paidData }] = await Promise.all([
+    supabase.from("tasks").select("id", { count: "exact", head: true }).eq("done", false).lte("due_date", today0),
+    supabase.from("messages").select("id", { count: "exact", head: true }).eq("from_client", true).is("read_at", null),
+    supabase.from("booking_requests").select("id", { count: "exact", head: true }).eq("status", "nouvelle"),
+    supabase.from("invoices").select("amount_mad, paid_on").eq("status", "payee").gte("paid_on", month0),
+  ]);
+  const revenue = ((paidData ?? []) as { amount_mad: number }[]).reduce((s, i) => s + Number(i.amount_mad), 0);
+  const nextSession = today.find((s) => new Date(s.starts_at) > now && s.status === "planifiee");
+  const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "2-digit", hourCycle: "h23", timeZone: "Africa/Casablanca" }).formatToParts(now).find((p) => p.type === "hour")?.value ?? 12);
+  const hello = hour >= 5 && hour < 12 ? "Bonjour" : hour >= 12 && hour < 18 ? "Bon après-midi" : "Bonsoir";
+
   return (
     <>
-      <PageHeader
-        title={
-          <>
-            Bonjour {firstName} <span className="inline-block origin-[70%_70%] animate-[wave_1.6s_ease-in-out_1]">👋</span>
-          </>
-        }
-        subtitle={`${fmtDate(now, { weekday: "long", day: "numeric", month: "long" })} · ${today.length} séance${today.length > 1 ? "s" : ""} aujourd'hui`}
-        actions={
-          <>
-            <LinkButton href="/clients/nouveau">
-              <Plus className="size-4" /> Nouveau client
-            </LinkButton>
-          </>
-        }
-      />
+      {/* Bandeau d'accueil */}
+      <section className="relative mb-5 animate-fade-up overflow-hidden rounded-3xl bg-gradient-to-br from-brand-700 via-brand-600 to-brand-500 p-6 text-white shadow-pop sm:p-8">
+        <svg className="pointer-events-none absolute inset-y-0 right-0 h-full w-2/3 opacity-60 [mask-image:linear-gradient(to_left,black,transparent)]" aria-hidden>
+          {Array.from({ length: 34 }, (_, i) => (
+            <rect key={i} x={`${(i * 37) % 100}%`} y={`${(i * 53) % 95}%`} width={6 + (i % 5) * 3} height={6 + (i % 5) * 3} fill={i % 5 === 0 ? "#ec8a45" : "rgba(255,255,255,.16)"} transform={`rotate(${(i * 13) % 30})`} />
+          ))}
+        </svg>
+        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-sm font-medium capitalize text-brand-100">{fmtDate(now, { weekday: "long", day: "numeric", month: "long" })}</p>
+            <h1 className="mt-1 font-display text-3xl font-extrabold tracking-tight sm:text-4xl">
+              {hello} {firstName} <span className="inline-block origin-[70%_70%] animate-[wave_1.6s_ease-in-out_1]">👋</span>
+            </h1>
+            <p className="mt-2 max-w-xl text-[15px] text-brand-50/90">
+              {today.length ? (
+                <>
+                  <b className="text-white">
+                    {today.length} séance{today.length > 1 ? "s" : ""}
+                  </b>{" "}
+                  au programme aujourd&apos;hui
+                  {nextSession && (
+                    <>
+                      {" "}
+                      · prochaine à <b className="text-accent-300">{fmtTime(nextSession.starts_at)}</b> avec {byId.get(nextSession.client_id)?.full_name.split(" ")[0]}
+                    </>
+                  )}
+                </>
+              ) : (
+                <>Aucune séance aujourd&apos;hui : profites-en pour faire les bilans en retard.</>
+              )}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/seances/nouvelle" className="inline-flex h-11 items-center gap-2 rounded-xl bg-accent-500 px-5 text-sm font-semibold text-white shadow-lg shadow-black/10 transition hover:bg-accent-600">
+              <Plus className="size-4" /> Nouvelle séance
+            </Link>
+            <Link href="/clients/nouveau" className="inline-flex h-11 items-center gap-2 rounded-xl bg-white/15 px-5 text-sm font-semibold text-white ring-1 ring-white/25 backdrop-blur transition hover:bg-white/25">
+              <Users className="size-4" /> Nouveau client
+            </Link>
+          </div>
+        </div>
+      </section>
 
-      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        <Kpi label="Clients actifs" value={active.length} delta={`${clients.length} au total`} icon={<Users className="size-[18px]" />} />
-        <Kpi tone="accent" label="Séances cette semaine" value={thisWeek.length} delta={`${signed(delta)} vs semaine passée`} positive={delta >= 0} icon={<CalendarDays className="size-[18px]" />} />
-        <Kpi label="Taux de présence" value={attendance === null ? "–" : `${attendance}%`} delta="sur 6 semaines" icon={<CalendarCheck2 className="size-[18px]" />} />
-        <Kpi tone="accent" label="Bilans à faire" value={due.length} delta={due.length ? "plus de 30 jours" : "tout est à jour"} positive={due.length === 0} icon={<ClipboardList className="size-[18px]" />} />
+      {/* Tuiles de statistiques */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile href="/clients?statut=actif" tone="brand" icon={<Users className="size-5" />} label="Clients actifs" value={active.length} sub={`${clients.length} clients au total`} series={activeSeries} />
+        <StatTile href="/seances" tone="accent" icon={<CalendarDays className="size-5" />} label="Séances cette semaine" value={thisWeek.length} sub="vs semaine passée" trend={delta} trendLabel={signed(delta)} series={weeks.map((w) => w.value)} />
+        <StatTile tone="green" icon={<CalendarCheck2 className="size-5" />} label="Taux de présence" value={attendance === null ? "–" : `${attendance}%`} sub="sur 6 semaines" trend={attDelta} trendLabel={`${signed(attDelta)} pts`} series={attendanceSeries} />
+        <StatTile href="/clients" tone="violet" icon={<ClipboardList className="size-5" />} label="Bilans à faire" value={due.length} sub={due.length ? "dernier bilan > 30 jours" : "tout est à jour"} trend={due.length ? -due.length : 0} trendLabel={due.length ? "à planifier" : "OK"} series={healthSeries} />
+      </div>
+
+      {/* Raccourcis */}
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <ShortcutTile href="/taches" icon={<ListChecks className="size-5" />} label="Tâches à faire" hint="aujourd'hui ou en retard" value={tasksDue ?? 0} hot={(tasksDue ?? 0) > 0} />
+        <ShortcutTile href="/messages" icon={<MessageCircle className="size-5" />} label="Messages non lus" hint="de vos clients" value={unread ?? 0} hot={(unread ?? 0) > 0} />
+        <ShortcutTile href="/reservations" icon={<CalendarCheck className="size-5" />} label="Réservations" hint="nouvelles demandes" value={bookings ?? 0} hot={(bookings ?? 0) > 0} />
+        <ShortcutTile href="/facturation" icon={<Receipt className="size-5" />} label="Encaissé ce mois" hint="factures payées, en MAD" value={new Intl.NumberFormat("fr-FR", { notation: "compact" }).format(revenue)} />
       </div>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.6fr_1fr]">

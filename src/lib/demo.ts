@@ -10,6 +10,14 @@ import { agadirToIso } from "./utils";
 export const DEMO = process.env.NEXT_PUBLIC_DEMO === "1";
 export const DEMO_ADMIN = "00000000-0000-4000-8000-000000000001";
 export const DEMO_CLIENT_USER = "00000000-0000-4000-8000-000000000002";
+export const DEMO_COACH = "00000000-0000-4000-8000-000000000003";
+
+/** Comptes de démonstration (données fictives, mode démo uniquement) */
+export const DEMO_ACCOUNTS = [
+  { email: "admin@moovup.ma", password: "moovup2026", userId: DEMO_ADMIN, label: "Administrateur", name: "Yassine Moov'Up", space: "Espace coach (accès complet)" },
+  { email: "sara@moovup.ma", password: "coach2026", userId: DEMO_COACH, label: "Coach", name: "Sara El Idrissi", space: "Espace coach" },
+  { email: "karim@example.com", password: "adherent2026", userId: DEMO_CLIENT_USER, label: "Adhérent", name: "Karim El Amrani", space: "Espace adhérent" },
+];
 
 type Row = Record<string, any>;
 type DB = Record<string, Row[]>;
@@ -324,11 +332,11 @@ class Query implements PromiseLike<any> {
   }
 }
 
-export function demoClient(userId: string) {
+export function demoClient(userId: string | null) {
   return {
     from: (table: string) => new Query(table),
     auth: {
-      getUser: async () => ({ data: { user: { id: userId, email: "demo@moovup.ma" } }, error: null }),
+      getUser: async () => ({ data: { user: userId ? { id: userId, email: "demo@moovup.ma" } : null }, error: null }),
       signOut: async () => ({ error: null }),
       signInWithPassword: async () => ({ error: null }),
       signUp: async () => ({ data: { session: {} }, error: null }),

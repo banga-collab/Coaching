@@ -8,7 +8,11 @@ export async function updateSession(request: NextRequest) {
 
   if (process.env.NEXT_PUBLIC_DEMO === "1") {
     const p = request.nextUrl.pathname;
-    if (p === "/login" || p === "/signup" || p === "/setup") return NextResponse.redirect(new URL("/", request.url));
+    const logged = !!request.cookies.get("demo_user")?.value;
+    const open = PUBLIC_PATHS.some((x) => p.startsWith(x));
+    if (p === "/setup") return NextResponse.redirect(new URL("/", request.url));
+    if (!logged && !open) return NextResponse.redirect(new URL("/login", request.url));
+    if (logged && (p === "/login" || p === "/signup")) return NextResponse.redirect(new URL("/", request.url));
     return response;
   }
 

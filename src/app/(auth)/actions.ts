@@ -1,6 +1,7 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { DEMO, DEMO_ACCOUNTS } from "@/lib/demo";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
@@ -16,6 +17,13 @@ function translate(msg: string) {
 }
 
 export async function signIn(_: AuthState, formData: FormData): Promise<AuthState> {
+  if (DEMO) {
+    const email = String(formData.get("email") ?? "").trim().toLowerCase();
+    const acc = DEMO_ACCOUNTS.find((a) => a.email === email && a.password === String(formData.get("password") ?? ""));
+    if (!acc) return { error: "E-mail ou mot de passe incorrect." };
+    (await cookies()).set("demo_user", acc.userId, { path: "/", httpOnly: true, sameSite: "lax" });
+    redirect(acc.label === "Adhérent" ? "/moi" : "/");
+  }
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword({
     email: String(formData.get("email") ?? "").trim(),
@@ -26,6 +34,7 @@ export async function signIn(_: AuthState, formData: FormData): Promise<AuthStat
 }
 
 export async function signUp(_: AuthState, formData: FormData): Promise<AuthState> {
+  if (DEMO) return { error: "Création de compte désactivée en mode démo : utilise un des comptes de démonstration." };
   const password = String(formData.get("password") ?? "");
   if (password.length < 8) return { error: "Le mot de passe doit contenir au moins 8 caractères." };
   const h = await headers();
@@ -45,6 +54,10 @@ export async function signUp(_: AuthState, formData: FormData): Promise<AuthStat
 }
 
 export async function signOut() {
+  if (DEMO) {
+    (await cookies()).delete("demo_user");
+    redirect("/login");
+  }
   const supabase = await createClient();
   await supabase.auth.signOut();
   redirect("/login");

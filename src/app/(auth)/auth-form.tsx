@@ -1,12 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
-import { Eye, EyeOff, Loader2, MailCheck } from "lucide-react";
+import { useActionState, useRef, useState } from "react";
+import { ArrowRight, Dumbbell, Eye, EyeOff, Loader2, MailCheck, ShieldCheck, UserRound } from "lucide-react";
 import { signIn, signUp, type AuthState } from "./actions";
 import { Field, Input, buttonClass } from "@/components/ui";
 
-export function AuthForm({ mode }: { mode: "login" | "signup" }) {
+type DemoAccount = { email: string; password: string; label: string; name: string; space: string };
+
+export function AuthForm({ mode, demoAccounts }: { mode: "login" | "signup"; demoAccounts?: DemoAccount[] }) {
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const fill = (a: DemoAccount) => {
+    if (emailRef.current) emailRef.current.value = a.email;
+    if (passRef.current) passRef.current.value = a.password;
+    formRef.current?.requestSubmit();
+  };
   const [state, action, pending] = useActionState<AuthState, FormData>(mode === "login" ? signIn : signUp, undefined);
   const [show, setShow] = useState(false);
 
@@ -31,18 +41,19 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
           {mode === "login" ? "Connecte-toi à ton espace Moov'Up." : "Utilise l'e-mail que tu as donné à ton coach pour retrouver ton suivi."}
         </p>
       </div>
-      <form action={action} className="space-y-4">
+      <form ref={formRef} action={action} className="space-y-4">
         {mode === "signup" && (
           <Field label="Nom complet">
             <Input name="full_name" required autoComplete="name" placeholder="Prénom Nom" />
           </Field>
         )}
         <Field label="E-mail">
-          <Input name="email" type="email" required autoComplete="email" placeholder="toi@exemple.com" />
+          <Input ref={emailRef} name="email" type="email" required autoComplete="email" placeholder="toi@exemple.com" />
         </Field>
         <Field label="Mot de passe">
           <span className="relative block">
             <Input
+              ref={passRef}
               name="password"
               type={show ? "text" : "password"}
               required
@@ -62,6 +73,30 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
           {mode === "login" ? "Se connecter" : "Créer mon compte"}
         </button>
       </form>
+      {demoAccounts && (
+        <div className="mt-7">
+          <div className="mb-3 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            <span className="h-px flex-1 bg-line" /> Comptes de démonstration <span className="h-px flex-1 bg-line" />
+          </div>
+          <div className="space-y-2">
+            {demoAccounts.map((a) => {
+              const Icon = a.label === "Adhérent" ? UserRound : a.label === "Coach" ? Dumbbell : ShieldCheck;
+              return (
+                <button key={a.email} type="button" onClick={() => fill(a)} disabled={pending} className="group flex w-full items-center gap-3 rounded-2xl border border-line bg-white p-3 text-left transition hover:border-brand-200 hover:bg-brand-50/50 disabled:opacity-60">
+                  <span className={`grid size-10 shrink-0 place-items-center rounded-xl ${a.label === "Adhérent" ? "bg-accent-50 text-accent-600" : "bg-brand-50 text-brand-500"}`}>
+                    <Icon className="size-[18px]" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-ink">{a.space}</span>
+                    <span className="block truncate text-xs text-muted">{a.email} · <span className="font-mono">{a.password}</span></span>
+                  </span>
+                  <ArrowRight className="size-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-brand-500" />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <p className="mt-6 text-center text-sm text-muted">
         {mode === "login" ? (
           <>
