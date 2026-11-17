@@ -1,0 +1,4 @@
+{"version":"0.0.1","configurations":[
+ {"name":"moovup-demo","runtimeExecutable":"npx","runtimeArgs":["next","dev","-p","3100"],"port":3100,"env":{"NEXT_PUBLIC_DEMO":"1"}},
+ {"name":"moovup","runtimeExecutable":"npm","runtimeArgs":["run","dev"],"port":3000}
+]}

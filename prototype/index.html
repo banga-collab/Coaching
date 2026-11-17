@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moov'Up Coach</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --blue:#1A6D8E; --blue-d:#12506a; --blue-l:#e6f1f5;
+  --orange:#E8782A; --orange-l:#fdf0e6;
+  --ink:#1d2730; --muted:#6b7680; --line:#e4e8ec; --bg:#f5f7f9; --card:#fff;
+  --ok:#2e9e6a; --warn:#d9a21b; --bad:#d04a3a;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--bg);font-size:14px}
+h1,h2,h3,.brand{font-family:Montserrat,sans-serif}
+button{font:inherit;cursor:pointer}
+.app{display:flex;min-height:100vh}
+/* sidebar */
+.side{width:240px;background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+.side .logo{padding:18px 16px 8px;border-bottom:1px solid var(--line)}
+.side .logo img{width:100%;height:auto;display:block;margin:-40px 0 -45px}
+.nav{padding:12px 10px;display:flex;flex-direction:column;gap:2px}
+.nav button{display:flex;align-items:center;gap:10px;border:0;background:none;padding:10px 12px;border-radius:8px;color:var(--muted);font-weight:500;text-align:left}
+.nav button:hover{background:var(--bg);color:var(--ink)}
+.nav button.on{background:var(--blue-l);color:var(--blue);font-weight:600}
+.nav svg{width:18px;height:18px;flex-shrink:0}
+.side .me{margin-top:auto;padding:14px 16px;border-top:1px solid var(--line);display:flex;gap:10px;align-items:center}
+.av{width:36px;height:36px;border-radius:50%;background:var(--blue);color:#fff;display:grid;place-items:center;font-weight:700;font-family:Montserrat;font-size:13px;flex-shrink:0}
+.av.o{background:var(--orange)}
+.me small{color:var(--muted);display:block}
+/* main */
+main{flex:1;min-width:0;padding:28px 32px 60px}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;gap:12px;flex-wrap:wrap}
+.top h1{font-size:24px;font-weight:800}
+.top h1 span{color:var(--orange)}
+.top p{color:var(--muted);margin-top:2px}
+.btn{border:0;border-radius:8px;padding:10px 16px;font-weight:600;background:var(--orange);color:#fff}
+.btn:hover{filter:brightness(.95)}
+.btn.ghost{background:#fff;color:var(--blue);border:1px solid var(--line)}
+.btn.blue{background:var(--blue)}
+.grid{display:grid;gap:16px}
+.k4{grid-template-columns:repeat(4,1fr)}
+.g2{grid-template-columns:2fr 1fr}
+.g11{grid-template-columns:1fr 1fr}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px}
+.card h3{font-size:15px;font-weight:700;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center}
+.kpi .l{color:var(--muted);font-size:13px}
+.kpi .v{font-family:Montserrat;font-size:28px;font-weight:800;margin:6px 0 2px;color:var(--blue)}
+.kpi .d{font-size:12px;color:var(--ok);font-weight:600}
+.kpi .d.neg{color:var(--bad)}
+.kpi{border-top:3px solid var(--blue)}
+.kpi.o{border-top-color:var(--orange)} .kpi.o .v{color:var(--orange)}
+.list>div{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.list>div:last-child{border:0}
+.list .t{font-family:Montserrat;font-weight:700;color:var(--blue);width:52px}
+.list .n{flex:1;min-width:0}
+.list .n small{color:var(--muted);display:block}
+.tag{font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;background:var(--blue-l);color:var(--blue);white-space:nowrap}
+.tag.o{background:var(--orange-l);color:var(--orange)}
+.tag.ok{background:#e5f5ed;color:var(--ok)}
+.tag.bad{background:#fbe9e7;color:var(--bad)}
+.tag.warn{background:#fbf3df;color:#a57a0d}
+.alert{display:flex;gap:10px;padding:10px 12px;border-radius:8px;background:var(--orange-l);margin-bottom:8px;font-size:13px}
+.alert b{color:var(--orange)}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:12px;color:var(--muted);font-weight:600;padding:10px 12px;border-bottom:1px solid var(--line);text-transform:uppercase;letter-spacing:.03em}
+td{padding:12px;border-bottom:1px solid var(--line)}
+tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)}
+.who{display:flex;align-items:center;gap:10px}
+.search{border:1px solid var(--line);border-radius:8px;padding:10px 12px;width:260px;font:inherit;background:#fff}
+.bar{height:6px;background:var(--line);border-radius:4px;overflow:hidden;width:90px}
+.bar i{display:block;height:100%;background:var(--orange)}
+/* profile */
+.phead{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.phead .av{width:64px;height:64px;font-size:22px}
+.phead h2{font-size:22px;font-weight:800}
+.phead .meta{color:var(--muted);margin-top:4px;display:flex;gap:14px;flex-wrap:wrap}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:20px 0 18px;overflow-x:auto;overflow-y:hidden}
+.tabs button{border:0;background:none;padding:10px 14px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tabs button.on{color:var(--blue);border-color:var(--orange)}
+.stat3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:6px}
+.stat3 div{background:var(--bg);border-radius:8px;padding:10px}
+.stat3 small{color:var(--muted)} .stat3 b{display:block;font-family:Montserrat;font-size:18px;margin-top:2px}
+.up{color:var(--ok)} .down{color:var(--bad)}
+.chartbox{position:relative;height:240px}
+.score{display:flex;align-items:center;gap:10px;margin:8px 0}
+.score span{width:110px;color:var(--muted)}
+.score .bar{flex:1;width:auto;height:8px}
+.score .bar i{background:var(--blue)}
+.score b{width:34px;text-align:right}
+/* forms */
+.form{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.form .full{grid-column:1/-1}
+label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:5px}
+input,select,textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit;background:#fff;color:var(--ink)}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--blue-l);border-color:var(--blue)}
+input[type=range]{padding:0;accent-color:var(--orange)}
+.rng{display:flex;gap:10px;align-items:center}
+.rng output{font-family:Montserrat;font-weight:700;color:var(--orange);width:28px}
+.checks{display:flex;flex-wrap:wrap;gap:8px}
+.checks label{display:flex;gap:6px;align-items:center;border:1px solid var(--line);padding:7px 11px;border-radius:20px;color:var(--ink);font-weight:500;margin:0;cursor:pointer}
+.checks input{width:auto}
+.sec{font-family:Montserrat;font-weight:700;color:var(--blue);font-size:14px;margin:22px 0 12px;padding-bottom:6px;border-bottom:2px solid var(--orange-l)}
+.ex{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(100px);background:var(--blue);color:#fff;padding:12px 20px;border-radius:8px;font-weight:600;transition:.3s;z-index:9}
+.toast.on{transform:translateX(-50%) translateY(0)}
+.week{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+.day h4{font-family:Montserrat;font-size:13px;margin-bottom:8px;color:var(--muted)}
+.day h4.today{color:var(--orange)}
+.slot{background:var(--blue-l);border-left:3px solid var(--blue);border-radius:6px;padding:8px;margin-bottom:6px;font-size:12px}
+.slot.o{background:var(--orange-l);border-color:var(--orange)}
+.slot b{display:block}
+@media (max-width:1000px){.k4{grid-template-columns:1fr 1fr}.g2,.g11{grid-template-columns:1fr}.week{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:720px){
+  .app{flex-direction:column}
+  .side{width:100%;height:auto;position:fixed;bottom:0;top:auto;z-index:5;border-right:0;border-top:1px solid var(--line)}
+  .side .logo,.side .me{display:none}
+  .nav{flex-direction:row;justify-content:space-around;padding:6px}
+  .nav button{flex-direction:column;gap:3px;font-size:10px;padding:6px}
+  main{padding:18px 16px 90px}
+  .form,.stat3{grid-template-columns:1fr}
+  .search{width:100%}
+  .ex{grid-template-columns:1fr 1fr}
+  .week{grid-template-columns:1fr 1fr}
+  .hide-m{display:none}
+}
+@media print{.side,.tabs,.top .btn,.noprint{display:none!important}main{padding:0}.card{break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="logo"><img src="logo.png" alt="Complexe Moov'Up Sports"></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="me"><div class="av o">CA</div><div><b>Coach Admin</b><small>Moov'Up Sports Agadir</small></div></div>
+  </aside>
+  <main id="main"></main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const ICONS={
+ dash:'<path d="M3 13h8V3H3zm10 8h8V11h-8zM3 21h8v-6H3zm10-18v6h8V3z"/>',
+ clients:'<path d="M16 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm-8 0a3 3 0 1 0-3-3 3 3 0 0 0 3 3zm0 2c-2.3 0-7 1.2-7 3.5V19h7v-2.5c0-.9.4-1.8 1.1-2.5A10 10 0 0 0 8 13zm8 0c-2.7 0-8 1.3-8 4v2h16v-2c0-2.7-5.3-4-8-4z"/>',
+ seances:'<path d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 16H5V9h14z"/>',
+ bilan:'<path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09A6 6 0 0 1 16.5 3C19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54z"/>',
+};
+const NAV=[['dash','Tableau de bord'],['clients','Clients'],['seances','Séances'],['bilan','Bilan de santé']];
+
+const MONTHS=['Juin','Juil','Août','Sept','Oct','Nov'];
+const CLIENTS=[
+ {id:1,name:'Karim El Amrani',ini:'KE',age:34,goal:'Perte de poids',since:'Juin 2026',status:'Actif',plan:'3x/semaine',att:92,
+  weight:[94,92.1,90.4,89.2,87.5,86.3],fat:[28,27,25.8,24.9,23.7,22.9],
+  squat:[80,85,92.5,97.5,100,105],bench:[60,62.5,65,67.5,70,72.5],
+  waist:[104,101,99,97,95,93],sleep:6,stress:7,energy:6,pain:'Genou droit',bp:'13/8',hr:68},
+ {id:2,name:'Salma Bennani',ini:'SB',age:28,goal:'Tonification',since:'Juil 2026',status:'Actif',plan:'2x/semaine',att:85,
+  weight:[63,62.6,62,61.4,61,60.5],fat:[26,25.5,24.6,24,23.2,22.5],
+  squat:[40,45,50,55,57.5,60],bench:[25,27.5,30,30,32.5,35],
+  waist:[74,73,72,71,70,69],sleep:8,stress:4,energy:8,pain:'',bp:'11/7',hr:62},
+ {id:3,name:'Youssef Ait Lahcen',ini:'YA',age:41,goal:'Prise de masse',since:'Mai 2026',status:'Actif',plan:'4x/semaine',att:96,
+  weight:[72,73.2,74.1,75,75.8,76.6],fat:[15,15.3,15.6,15.8,16,16.1],
+  squat:[100,107.5,112.5,120,125,130],bench:[80,82.5,87.5,90,92.5,95],
+  waist:[82,82,83,83,84,84],sleep:7,stress:5,energy:8,pain:'',bp:'12/8',hr:58},
+ {id:4,name:'Nadia Ouhammou',ini:'NO',age:52,goal:'Santé & mobilité',since:'Sept 2026',status:'Actif',plan:'2x/semaine',att:78,
+  weight:[0,0,0,79,78.2,77.4],fat:[0,0,0,34,33.4,32.8],
+  squat:[0,0,0,20,25,30],bench:[0,0,0,15,17.5,20],
+  waist:[0,0,0,96,95,93],sleep:5,stress:8,energy:5,pain:'Bas du dos',bp:'14/9',hr:76},
+ {id:5,name:'Omar Tazi',ini:'OT',age:23,goal:'Performance foot',since:'Avr 2026',status:'En pause',plan:'3x/semaine',att:64,
+  weight:[70,70.5,71,71,71.2,71.2],fat:[12,11.8,11.5,11.4,11.4,11.5],
+  squat:[90,95,100,105,105,105],bench:[60,62.5,65,67.5,67.5,67.5],
+  waist:[78,78,77,77,77,77],sleep:7,stress:5,energy:7,pain:'Cheville gauche',bp:'12/7',hr:55},
+ {id:6,name:'Imane Chraibi',ini:'IC',age:31,goal:'Remise en forme post-partum',since:'Oct 2026',status:'Actif',plan:'2x/semaine',att:88,
+  weight:[0,0,0,0,71,69.8],fat:[0,0,0,0,31,30.1],
+  squat:[0,0,0,0,25,30],bench:[0,0,0,0,15,17.5],
+  waist:[0,0,0,0,86,84],sleep:5,stress:6,energy:6,pain:'',bp:'11/7',hr:70},
+];
+const SESSIONS=[
+ {day:0,t:'07:00',c:1,type:'Musculation – Bas du corps'},{day:0,t:'09:30',c:4,type:'Mobilité & gainage'},
+ {day:0,t:'18:00',c:3,type:'Musculation – Push'},{day:0,t:'19:30',c:2,type:'Circuit training'},
+ {day:1,t:'08:00',c:6,type:'Renforcement doux'},{day:1,t:'18:30',c:3,type:'Musculation – Pull'},
+ {day:2,t:'07:00',c:1,type:'Cardio HIIT'},{day:2,t:'19:00',c:2,type:'Fessiers & abdos'},
+ {day:3,t:'09:30',c:4,type:'Mobilité & gainage'},{day:3,t:'18:00',c:3,type:'Musculation – Jambes'},
+ {day:4,t:'07:00',c:1,type:'Full body'},{day:4,t:'08:00',c:6,type:'Renforcement doux'},
+ {day:5,t:'10:00',c:3,type:'Musculation – Bras'},
+];
+const DAYS=['Lun 17','Mar 18','Mer 19','Jeu 20','Ven 21','Sam 22'];
+const byId=id=>CLIENTS.find(c=>c.id==id);
+const last=a=>a[a.length-1];
+const first=a=>a.find(v=>v>0);
+const fmt=v=>(Math.round(v*10)/10).toString().replace('.',',');
+
+let state={view:'dash',client:null,tab:'prog'};
+let charts=[];
+const $=s=>document.querySelector(s);
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2200)}
+function go(view,extra={}){Object.assign(state,{view},extra);render();window.scrollTo(0,0)}
+
+function renderNav(){
+  $('#nav').innerHTML=NAV.map(([k,l])=>`<button class="${(state.view===k||(state.view==='client'&&k==='clients'))?'on':''}" onclick="go('${k}')"><svg viewBox="0 0 24 24" fill="currentColor">${ICONS[k]}</svg>${l}</button>`).join('');
+}
+
+function statusTag(s){return `<span class="tag ${s==='Actif'?'ok':'warn'}">${s}</span>`}
+
+/* ---------- DASHBOARD ---------- */
+function vDash(){
+  const today=SESSIONS.filter(s=>s.day===0);
+  const alerts=CLIENTS.filter(c=>c.pain||c.sleep<=5||c.stress>=8);
+  return `
+  <div class="top"><div><h1>Bonjour Coach <span>👋</span></h1><p>Lundi 17 novembre 2026 · ${today.length} séances aujourd'hui</p></div>
+  <button class="btn" onclick="go('seances')">+ Nouvelle séance</button></div>
+  <div class="grid k4">
+    <div class="card kpi"><div class="l">Clients actifs</div><div class="v">${CLIENTS.filter(c=>c.status==='Actif').length}</div><div class="d">+2 ce mois</div></div>
+    <div class="card kpi o"><div class="l">Séances cette semaine</div><div class="v">${SESSIONS.length}</div><div class="d">+3 vs semaine passée</div></div>
+    <div class="card kpi"><div class="l">Taux de présence</div><div class="v">84%</div><div class="d">+4 pts</div></div>
+    <div class="card kpi o"><div class="l">Bilans à faire</div><div class="v">3</div><div class="d neg">2 en retard</div></div>
+  </div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h3>Séances du jour <span class="tag">${today.length}</span></h3>
+      <div class="list">${today.map(s=>{const c=byId(s.c);return `<div><span class="t">${s.t}</span><div class="av" style="width:32px;height:32px;font-size:11px">${c.ini}</div><div class="n"><b>${c.name}</b><small>${s.type}</small></div><button class="btn ghost" style="padding:6px 12px" onclick="go('client',{client:${c.id},tab:'prog'})">Ouvrir</button></div>`}).join('')}</div>
+    </div>
+    <div class="card"><h3>Alertes santé</h3>
+      ${alerts.map(c=>`<div class="alert"><div>⚠️</div><div><b>${c.name.split(' ')[0]}</b> · ${[c.pain&&'douleur '+c.pain.toLowerCase(),c.sleep<=5&&'sommeil faible ('+c.sleep+'/10)',c.stress>=8&&'stress élevé ('+c.stress+'/10)'].filter(Boolean).join(', ')}</div></div>`).join('')}
+    </div>
+  </div>
+  <div class="grid g11" style="margin-top:16px">
+    <div class="card"><h3>Séances par semaine</h3><div class="chartbox"><canvas id="cWeeks"></canvas></div></div>
+    <div class="card"><h3>Meilleures progressions <small style="color:var(--muted);font-weight:500">depuis le début</small></h3>
+      <div class="list">${CLIENTS.slice(0,4).map(c=>{const d=last(c.squat)-first(c.squat);return `<div style="cursor:pointer" onclick="go('client',{client:${c.id},tab:'prog'})"><div class="av" style="width:32px;height:32px;font-size:11px">${c.ini}</div><div class="n"><b>${c.name}</b><small>${c.goal}</small></div><span class="tag ok">Squat +${fmt(d)} kg</span></div>`}).join('')}</div>
+    </div>
+  </div>`;
+}
+
+/* ---------- CLIENTS ---------- */
+function vClients(){
+  return `<div class="top"><div><h1>Clients</h1><p>${CLIENTS.length} clients suivis</p></div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap"><input class="search" placeholder="Rechercher un client…" oninput="filterClients(this.value)"><button class="btn" onclick="toast('Formulaire nouveau client (à venir)')">+ Nouveau client</button></div></div>
+  <div class="card" style="padding:0;overflow-x:auto"><table><thead><tr><th>Client</th><th class="hide-m">Objectif</th><th class="hide-m">Fréquence</th><th>Poids</th><th class="hide-m">Présence</th><th>Statut</th></tr></thead>
+  <tbody id="ctable">${clientRows(CLIENTS)}</tbody></table></div>`;
+}
+function clientRows(list){return list.map(c=>{const d=last(c.weight)-first(c.weight);return `<tr class="click" onclick="go('client',{client:${c.id},tab:'prog'})"><td><div class="who"><div class="av" style="width:34px;height:34px;font-size:12px">${c.ini}</div><div><b>${c.name}</b><br><small style="color:var(--muted)">${c.age} ans · depuis ${c.since}</small></div></div></td><td class="hide-m">${c.goal}</td><td class="hide-m">${c.plan}</td><td><b>${fmt(last(c.weight))} kg</b> <small class="${d<=0?'up':'down'}">${d>0?'+':''}${fmt(d)}</small></td><td class="hide-m"><div style="display:flex;gap:8px;align-items:center"><div class="bar"><i style="width:${c.att}%"></i></div>${c.att}%</div></td><td>${statusTag(c.status)}</td></tr>`}).join('')}
+function filterClients(q){q=q.toLowerCase();$('#ctable').innerHTML=clientRows(CLIENTS.filter(c=>c.name.toLowerCase().includes(q)||c.goal.toLowerCase().includes(q)))}
+
+/* ---------- CLIENT PROFILE ---------- */
+function vClient(){
+  const c=byId(state.client);
+  const T=[['prog','Progression'],['sess','Séances'],['health','Bilans de santé']];
+  let body='';
+  if(state.tab==='prog'){
+    const dw=last(c.weight)-first(c.weight), df=last(c.fat)-first(c.fat), ds=last(c.squat)-first(c.squat);
+    body=`<div class="grid k4">
+      <div class="card kpi"><div class="l">Poids</div><div class="v">${fmt(last(c.weight))} kg</div><div class="d ${dw>0&&c.goal!=='Prise de masse'?'neg':''}">${dw>0?'+':''}${fmt(dw)} kg</div></div>
+      <div class="card kpi o"><div class="l">Masse grasse</div><div class="v">${fmt(last(c.fat))}%</div><div class="d ${df>0?'neg':''}">${df>0?'+':''}${fmt(df)} pts</div></div>
+      <div class="card kpi"><div class="l">Squat (1RM)</div><div class="v">${fmt(last(c.squat))} kg</div><div class="d">+${fmt(ds)} kg</div></div>
+      <div class="card kpi o"><div class="l">Tour de taille</div><div class="v">${last(c.waist)} cm</div><div class="d">${fmt(last(c.waist)-first(c.waist))} cm</div></div>
+    </div>
+    <div class="grid g11" style="margin-top:16px">
+      <div class="card"><h3>Poids & masse grasse</h3><div class="chartbox"><canvas id="cBody"></canvas></div></div>
+      <div class="card"><h3>Force (1RM)</h3><div class="chartbox"><canvas id="cStr"></canvas></div></div>
+    </div>
+    <div class="card" style="margin-top:16px;overflow-x:auto"><h3>Mensurations</h3><table><thead><tr><th>Mesure</th>${MONTHS.map(m=>`<th>${m}</th>`).join('')}</tr></thead><tbody>
+      ${[['Poids (kg)',c.weight],['Masse grasse (%)',c.fat],['Tour de taille (cm)',c.waist],['Squat (kg)',c.squat],['Développé couché (kg)',c.bench]].map(([l,a])=>`<tr><td><b>${l}</b></td>${a.map(v=>`<td>${v?fmt(v):'–'}</td>`).join('')}</tr>`).join('')}
+    </tbody></table></div>`;
+  } else if(state.tab==='sess'){
+    const ss=SESSIONS.filter(s=>s.c===c.id);
+    body=`<div class="card"><h3>Historique & planning <button class="btn noprint" style="padding:7px 12px" onclick="go('seances')">+ Séance</button></h3><div class="list">
+      ${ss.map(s=>`<div><span class="t">${s.t}</span><div class="n"><b>${s.type}</b><small>${DAYS[s.day]} novembre</small></div><span class="tag ${s.day===0?'o':''}">${s.day===0?"Aujourd'hui":'Planifiée'}</span></div>`).join('')}
+      <div><span class="t">07:00</span><div class="n"><b>Full body</b><small>Ven 14 novembre · RPE 8 · « Très bonne séance, charges en hausse »</small></div><span class="tag ok">Réalisée</span></div>
+      <div><span class="t">07:00</span><div class="n"><b>Cardio HIIT</b><small>Mer 12 novembre · RPE 7</small></div><span class="tag ok">Réalisée</span></div>
+      <div><span class="t">07:00</span><div class="n"><b>Musculation – Bas du corps</b><small>Lun 10 novembre</small></div><span class="tag bad">Absent</span></div>
+    </div></div>`;
+  } else {
+    const sc=(l,v,inv)=>{const p=v*10;return `<div class="score"><span>${l}</span><div class="bar"><i style="width:${p}%;background:${(inv?v>=7:v<=5)?'var(--bad)':'var(--blue)'}"></i></div><b>${v}/10</b></div>`};
+    body=`<div class="grid g11">
+      <div class="card"><h3>Dernier bilan <span class="tag">10 nov. 2026</span></h3>
+        <div class="stat3"><div><small>Tension</small><b>${c.bp}</b></div><div><small>FC repos</small><b>${c.hr} bpm</b></div><div><small>IMC</small><b>${fmt(last(c.weight)/(1.75*1.75))}</b></div></div>
+        ${sc('Sommeil',c.sleep)}${sc('Énergie',c.energy)}${sc('Stress',c.stress,true)}
+        <div style="margin-top:12px"><label>Douleurs signalées</label>${c.pain?`<span class="tag bad">${c.pain}</span>`:'<span class="tag ok">Aucune</span>'}</div>
+      </div>
+      <div class="card"><h3>Questionnaire d'entrée</h3>
+        <div class="list">
+          <div><div class="n"><small>Antécédents médicaux</small><b>${c.age>45?'Hypertension légère':'Aucun'}</b></div></div>
+          <div><div class="n"><small>Blessures passées</small><b>${c.pain||'Aucune'}</b></div></div>
+          <div><div class="n"><small>Médicaments</small><b>${c.age>45?'Amlodipine 5 mg':'Aucun'}</b></div></div>
+          <div><div class="n"><small>Questionnaire PAR-Q</small><b>${c.age>45?'1 réponse positive · avis médical fourni':'Négatif'}</b></div></div>
+          <div><div class="n"><small>Consentement données santé</small><b style="color:var(--ok)">Signé le ${c.since}</b></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px"><h3>Historique des bilans <button class="btn noprint" style="padding:7px 12px" onclick="go('bilan',{client:${c.id}})">+ Nouveau bilan</button></h3>
+      <div class="chartbox"><canvas id="cWell"></canvas></div></div>`;
+  }
+  return `<div class="top"><button class="btn ghost noprint" onclick="go('clients')">← Clients</button>
+    <div style="display:flex;gap:10px"><button class="btn ghost" onclick="go('bilan',{client:${c.id}})">Nouveau bilan</button><button class="btn blue" onclick="window.print()">Rapport PDF</button></div></div>
+  <div class="card"><div class="phead"><div class="av">${c.ini}</div><div style="flex:1"><h2>${c.name}</h2><div class="meta"><span>${c.age} ans</span><span>🎯 ${c.goal}</span><span>📅 ${c.plan}</span><span>Depuis ${c.since}</span></div></div>${statusTag(c.status)}</div></div>
+  <div class="tabs">${T.map(([k,l])=>`<button class="${state.tab===k?'on':''}" onclick="go('client',{tab:'${k}'})">${l}</button>`).join('')}</div>
+  ${body}`;
+}
+
+/* ---------- SÉANCES ---------- */
+function vSeances(){
+  const opts=CLIENTS.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  const exRow=(n,s,r,w)=>`<div class="ex"><input value="${n}" placeholder="Exercice"><input value="${s}" placeholder="Séries"><input value="${r}" placeholder="Reps"><input value="${w}" placeholder="Charge (kg)"><input placeholder="RPE"></div>`;
+  return `<div class="top"><div><h1>Séances</h1><p>Semaine du 17 au 22 novembre</p></div></div>
+  <div class="card"><h3>Planning de la semaine</h3><div class="week">
+    ${DAYS.map((d,i)=>`<div class="day"><h4 class="${i===0?'today':''}">${d}</h4>${SESSIONS.filter(s=>s.day===i).map(s=>`<div class="slot ${i===0?'o':''}"><b>${s.t} · ${byId(s.c).name.split(' ')[0]}</b>${s.type}</div>`).join('')}</div>`).join('')}
+  </div></div>
+  <div class="card" style="margin-top:16px"><h3>Enregistrer une séance</h3>
+    <div class="form">
+      <div><label>Client</label><select>${opts}</select></div>
+      <div><label>Date</label><input type="date" value="2026-11-17"></div>
+      <div><label>Type de séance</label><select><option>Musculation</option><option>Cardio / HIIT</option><option>Mobilité</option><option>Circuit training</option></select></div>
+      <div><label>Présence</label><select><option>Présent</option><option>Absent</option><option>Annulé</option></select></div>
+    </div>
+    <div class="sec">Exercices</div>
+    <div class="ex" style="font-size:12px;color:var(--muted);font-weight:600"><span>Exercice</span><span>Séries</span><span>Reps</span><span>Charge</span><span>RPE</span></div>
+    <div id="exs">${exRow('Squat barre',4,8,100)}${exRow('Fentes haltères',3,12,16)}${exRow('Leg curl',3,12,35)}</div>
+    <button class="btn ghost" onclick="addEx()">+ Ajouter un exercice</button>
+    <div class="form" style="margin-top:16px"><div class="full"><label>Notes du coach</label><textarea rows="3" placeholder="Ressenti, technique, points à travailler…"></textarea></div></div>
+    <div style="margin-top:16px;text-align:right"><button class="btn" onclick="toast('Séance enregistrée ✓')">Enregistrer la séance</button></div>
+  </div>`;
+}
+
+function addEx(){document.getElementById('exs').insertAdjacentHTML('beforeend','<div class="ex"><input placeholder="Exercice"><input placeholder="Séries"><input placeholder="Reps"><input placeholder="Charge (kg)"><input placeholder="RPE"></div>')}
+
+/* ---------- BILAN ---------- */
+function vBilan(){
+  const opts=CLIENTS.map(c=>`<option value="${c.id}" ${state.client==c.id?'selected':''}>${c.name}</option>`).join('');
+  const rng=(l,v)=>`<div><label>${l}</label><div class="rng"><input type="range" min="1" max="10" value="${v}" oninput="this.nextElementSibling.value=this.value"><output>${v}</output></div></div>`;
+  return `<div class="top"><div><h1>Bilan de santé</h1><p>Bilan initial ou check-in périodique</p></div></div>
+  <div class="card">
+    <div class="form">
+      <div><label>Client</label><select>${opts}</select></div>
+      <div><label>Type de bilan</label><select><option>Check-in mensuel</option><option>Bilan initial complet</option><option>Check-in hebdomadaire</option></select></div>
+    </div>
+    <div class="sec">Mesures</div>
+    <div class="form">
+      <div><label>Poids (kg)</label><input type="number" step="0.1" placeholder="86,3"></div>
+      <div><label>Taille (cm)</label><input type="number" placeholder="175"></div>
+      <div><label>Masse grasse (%)</label><input type="number" step="0.1" placeholder="22,9"></div>
+      <div><label>Tour de taille (cm)</label><input type="number" placeholder="93"></div>
+      <div><label>Tension artérielle</label><input placeholder="12/8"></div>
+      <div><label>FC au repos (bpm)</label><input type="number" placeholder="65"></div>
+    </div>
+    <div class="sec">Bien-être (1 à 10)</div>
+    <div class="form">${rng('Qualité du sommeil',7)}${rng("Niveau d'énergie",7)}${rng('Stress',5)}${rng('Motivation',8)}${rng('Alimentation',6)}${rng('Récupération',7)}</div>
+    <div class="sec">Douleurs & santé</div>
+    <label>Zones douloureuses</label>
+    <div class="checks">${['Aucune','Nuque','Épaules','Dos','Bas du dos','Hanches','Genoux','Chevilles','Poignets'].map(z=>`<label><input type="checkbox">${z}</label>`).join('')}</div>
+    <div class="form" style="margin-top:14px">
+      <div><label>Antécédents / pathologies</label><textarea rows="2" placeholder="Diabète, hypertension, asthme…"></textarea></div>
+      <div><label>Médicaments en cours</label><textarea rows="2"></textarea></div>
+      <div class="full"><label>Remarques du coach</label><textarea rows="3" placeholder="Observations, ajustements du programme…"></textarea></div>
+    </div>
+    <div class="checks" style="margin-top:14px"><label><input type="checkbox" checked>Le client consent à la conservation de ses données de santé (loi 09-08)</label></div>
+    <div style="margin-top:18px;display:flex;justify-content:flex-end;gap:10px"><button class="btn ghost" onclick="go('dash')">Annuler</button><button class="btn" onclick="toast('Bilan enregistré ✓')">Enregistrer le bilan</button></div>
+  </div>`;
+}
+
+/* ---------- CHARTS ---------- */
+Chart.defaults.font.family='Inter'; Chart.defaults.color='#6b7680';
+const BLUE='#1A6D8E', OR='#E8782A';
+function line(id,sets,opts={}){const el=document.getElementById(id);if(!el)return;
+  charts.push(new Chart(el,{type:'line',data:{labels:MONTHS,datasets:sets.map(s=>({tension:.35,pointRadius:4,borderWidth:2.5,spanGaps:true,...s,data:s.data.map(v=>v||null)}))},
+  options:{maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8}}},scales:{x:{grid:{display:false}},y:{grid:{color:'#eef1f3'}},...opts.scales}}}))}
+function drawCharts(){
+  charts.forEach(c=>c.destroy());charts=[];
+  const w=document.getElementById('cWeeks');
+  if(w)charts.push(new Chart(w,{type:'bar',data:{labels:['S42','S43','S44','S45','S46','S47'],datasets:[{data:[9,11,10,12,10,13],backgroundColor:[BLUE,BLUE,BLUE,BLUE,BLUE,OR],borderRadius:6}]},options:{maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{grid:{color:'#eef1f3'},beginAtZero:true}}}}));
+  const c=byId(state.client); if(!c)return;
+  line('cBody',[{label:'Poids (kg)',data:c.weight,borderColor:BLUE,backgroundColor:BLUE,yAxisID:'y'},{label:'Masse grasse (%)',data:c.fat,borderColor:OR,backgroundColor:OR,yAxisID:'y1'}],{scales:{y1:{position:'right',grid:{display:false}}}});
+  line('cStr',[{label:'Squat',data:c.squat,borderColor:BLUE,backgroundColor:BLUE},{label:'Développé couché',data:c.bench,borderColor:OR,backgroundColor:OR}]);
+  const j=(v,a)=>MONTHS.map((_,i)=>Math.max(1,Math.min(10,v+a[i])));
+  line('cWell',[{label:'Sommeil',data:j(c.sleep,[-2,-1,-1,0,1,0]),borderColor:BLUE,backgroundColor:BLUE},{label:'Énergie',data:j(c.energy,[-2,-2,-1,-1,0,0]),borderColor:OR,backgroundColor:OR},{label:'Stress',data:j(c.stress,[1,1,0,0,-1,0]),borderColor:'#9aa4ad',backgroundColor:'#9aa4ad',borderDash:[5,4]}],{scales:{y:{min:0,max:10,grid:{color:'#eef1f3'}}}});
+}
+
+function render(){
+  renderNav();
+  const V={dash:vDash,clients:vClients,client:vClient,seances:vSeances,bilan:vBilan};
+  $('#main').innerHTML=V[state.view]();
+  drawCharts();
+}
+render();
+</script>
+</body>
+</html>
