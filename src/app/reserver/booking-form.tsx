@@ -11,7 +11,7 @@ import { cn, fmtDate, fmtTime } from "@/lib/utils";
 import { Card, Field, Input, Textarea } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 
-export function BookingForm({ types, days, brand, whatsapp, slot }: { types: string[]; days: BookingDay[]; brand: string; whatsapp: string | null; slot: number }) {
+export function BookingForm({ types, days, brand, whatsapp, slot, referral }: { types: string[]; days: BookingDay[]; brand: string; whatsapp: string | null; slot: number; referral?: string }) {
   const [state, action] = useActionState<BookingState, FormData>(createBookingAction, undefined);
   const [type, setType] = useState(types.length === 1 ? types[0]! : "");
   const firstOpen = days.find((d) => d.slots.length)?.key ?? null;
@@ -151,7 +151,7 @@ export function BookingForm({ types, days, brand, whatsapp, slot }: { types: str
             </span>
           </Field>
           <Field label="Message (facultatif)" className="sm:col-span-2">
-            <Textarea name="message" maxLength={1000} rows={3} placeholder="Votre objectif, vos disponibilités, une blessure à signaler…" />
+            <Textarea name="message" maxLength={1000} rows={3} defaultValue={referral ? `Code parrainage : ${referral}` : undefined} placeholder="Votre objectif, vos disponibilités, une blessure à signaler…" />
           </Field>
         </div>
 

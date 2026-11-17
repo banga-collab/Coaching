@@ -38,6 +38,77 @@ function Sparkline({ data, color, id }: { data: number[]; color: string; id: str
   );
 }
 
+const SOLID: Record<Tone, string> = {
+  brand: "from-brand-700 via-brand-600 to-brand-500 shadow-brand-700/25",
+  accent: "from-accent-600 via-accent-500 to-accent-400 shadow-accent-600/25",
+  green: "from-emerald-600 via-emerald-500 to-emerald-400 shadow-emerald-600/25",
+  violet: "from-violet-600 via-violet-500 to-violet-400 shadow-violet-600/25",
+};
+
+/** Tuile pleine couleur (style « énergique ») : texte blanc, grande icône en filigrane, mini-courbe blanche. */
+export function SolidTile({
+  label,
+  value,
+  sub,
+  icon,
+  watermark,
+  tone = "brand",
+  trendLabel,
+  trendUp,
+  series,
+  href,
+}: {
+  label: string;
+  value: ReactNode;
+  sub?: string;
+  icon: ReactNode;
+  watermark: ReactNode;
+  tone?: Tone;
+  trendLabel?: string;
+  trendUp?: boolean | null;
+  series?: number[];
+  href?: string;
+}) {
+  const TrendIcon = trendUp == null ? Minus : trendUp ? ArrowUpRight : ArrowDownRight;
+  const body = (
+    <>
+      <span className="pointer-events-none absolute -bottom-6 -right-6 text-white/10 transition-transform duration-500 group-hover:scale-110 group-hover:-rotate-6 [&>svg]:size-36">
+        {watermark}
+      </span>
+      <svg className="pointer-events-none absolute inset-0 h-full w-full opacity-30" aria-hidden>
+        {Array.from({ length: 7 }, (_, i) => (
+          <rect key={i} x={`${55 + ((i * 13) % 40)}%`} y={`${(i * 29) % 70}%`} width={4 + (i % 3) * 3} height={4 + (i % 3) * 3} fill="#fff" opacity={0.35} transform={`rotate(${i * 9})`} />
+        ))}
+      </svg>
+      <div className="relative flex items-start justify-between gap-2">
+        <span className="grid size-12 place-items-center rounded-2xl bg-white/20 ring-1 ring-white/30 backdrop-blur-sm [&>svg]:size-6">{icon}</span>
+        {trendLabel && (
+          <span className="inline-flex items-center gap-0.5 rounded-full bg-white/20 px-2.5 py-1 text-[11px] font-bold ring-1 ring-white/25 backdrop-blur-sm">
+            <TrendIcon className="size-3.5" />
+            {trendLabel}
+          </span>
+        )}
+      </div>
+      <div className="relative mt-5 flex items-end justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-display text-[40px] font-extrabold leading-none tracking-tight drop-shadow-sm">{value}</p>
+          <p className="mt-2 text-sm font-bold uppercase tracking-wide text-white/95">{label}</p>
+          {sub && <p className="mt-0.5 truncate text-xs text-white/75">{sub}</p>}
+        </div>
+        {series && <Sparkline data={series} color="#ffffff" id={`sl-${label.replace(/\W/g, "")}`} />}
+      </div>
+    </>
+  );
+  const cls = cn("group relative overflow-hidden rounded-3xl bg-gradient-to-br p-5 text-white shadow-xl transition duration-200", SOLID[tone]);
+  return href ? (
+    <Link href={href} className={cn(cls, "hover:-translate-y-1 hover:shadow-2xl")}>
+      {body}
+    </Link>
+  ) : (
+    <div className={cls}>{body}</div>
+  );
+}
+
 export function StatTile({
   label,
   value,

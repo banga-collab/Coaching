@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AlertTriangle, CalendarCheck, CalendarCheck2, CalendarDays, ChevronRight, ClipboardList, HeartPulse, ListChecks, MessageCircle, Plus, Receipt, TrendingUp, Users } from "lucide-react";
-import { ShortcutTile, StatTile } from "@/components/stat-tile";
+import { AlertTriangle, CalendarCheck, CalendarCheck2, CalendarDays, ChevronRight, ClipboardList, Dumbbell, Flame, HeartPulse, ListChecks, MessageCircle, Plus, Receipt, TrendingUp, Trophy, Users } from "lucide-react";
+import { SolidTile } from "@/components/stat-tile";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/auth";
 import { healthAlerts, latestBy } from "@/lib/insights";
@@ -106,111 +106,160 @@ export default async function Dashboard() {
 
   return (
     <>
-      {/* Bandeau d'accueil */}
-      <section className="relative mb-5 animate-fade-up overflow-hidden rounded-3xl bg-gradient-to-br from-brand-700 via-brand-600 to-brand-500 p-6 text-white shadow-pop sm:p-8">
-        <svg className="pointer-events-none absolute inset-y-0 right-0 h-full w-2/3 opacity-60 [mask-image:linear-gradient(to_left,black,transparent)]" aria-hidden>
-          {Array.from({ length: 34 }, (_, i) => (
-            <rect key={i} x={`${(i * 37) % 100}%`} y={`${(i * 53) % 95}%`} width={6 + (i % 5) * 3} height={6 + (i % 5) * 3} fill={i % 5 === 0 ? "#ec8a45" : "rgba(255,255,255,.16)"} transform={`rotate(${(i * 13) % 30})`} />
-          ))}
-        </svg>
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-sm font-medium capitalize text-brand-100">{fmtDate(now, { weekday: "long", day: "numeric", month: "long" })}</p>
-            <h1 className="mt-1 font-display text-3xl font-extrabold tracking-tight sm:text-4xl">
-              {hello} {firstName} <span className="inline-block origin-[70%_70%] animate-[wave_1.6s_ease-in-out_1]">👋</span>
-            </h1>
-            <p className="mt-2 max-w-xl text-[15px] text-brand-50/90">
-              {today.length ? (
-                <>
-                  <b className="text-white">
-                    {today.length} séance{today.length > 1 ? "s" : ""}
-                  </b>{" "}
-                  au programme aujourd&apos;hui
-                  {nextSession && (
-                    <>
-                      {" "}
-                      · prochaine à <b className="text-accent-300">{fmtTime(nextSession.starts_at)}</b> avec {byId.get(nextSession.client_id)?.full_name.split(" ")[0]}
-                    </>
-                  )}
-                </>
-              ) : (
-                <>Aucune séance aujourd&apos;hui : profites-en pour faire les bilans en retard.</>
-              )}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link href="/seances/nouvelle" className="inline-flex h-11 items-center gap-2 rounded-xl bg-accent-500 px-5 text-sm font-semibold text-white shadow-lg shadow-black/10 transition hover:bg-accent-600">
-              <Plus className="size-4" /> Nouvelle séance
-            </Link>
-            <Link href="/clients/nouveau" className="inline-flex h-11 items-center gap-2 rounded-xl bg-white/15 px-5 text-sm font-semibold text-white ring-1 ring-white/25 backdrop-blur transition hover:bg-white/25">
-              <Users className="size-4" /> Nouveau client
-            </Link>
-          </div>
+      {/* En-tête */}
+      <header className="mb-6 flex animate-fade-up flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-50 px-3 py-1 text-xs font-bold capitalize text-accent-700 ring-1 ring-accent-100 xl:hidden">
+            <CalendarDays className="size-3.5" />
+            {fmtDate(now, { weekday: "long", day: "numeric", month: "long" })}
+          </span>
+          <h1 className="mt-3 xl:mt-0 font-display text-[32px] font-extrabold leading-tight tracking-tight text-ink sm:text-[40px]">
+            {hello} <span className="bg-gradient-to-r from-brand-600 to-brand-400 bg-clip-text text-transparent">{firstName}</span> 💪
+          </h1>
+          <p className="mt-1 text-[15px] text-muted">
+            {today.length ? (
+              <>
+                <b className="text-ink">
+                  {today.length} séance{today.length > 1 ? "s" : ""}
+                </b>{" "}
+                aujourd&apos;hui
+                {nextSession && (
+                  <>
+                    {" "}· prochaine à <b className="text-accent-600">{fmtTime(nextSession.starts_at)}</b> avec {byId.get(nextSession.client_id)?.full_name.split(" ")[0]}
+                  </>
+                )}
+              </>
+            ) : (
+              <>Pas de séance aujourd&apos;hui : le moment idéal pour faire les bilans.</>
+            )}
+          </p>
         </div>
-      </section>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/clients/nouveau" className="inline-flex h-12 items-center gap-2 rounded-2xl border-2 border-brand-500 bg-white px-5 text-sm font-bold text-brand-600 transition hover:bg-brand-50">
+            <Users className="size-4" /> Nouveau client
+          </Link>
+          <Link href="/seances/nouvelle" className="inline-flex h-12 items-center gap-2 rounded-2xl bg-gradient-to-r from-accent-500 to-accent-400 px-5 text-sm font-bold text-white shadow-lg shadow-accent-500/30 transition hover:-translate-y-0.5 hover:shadow-xl">
+            <Plus className="size-4" /> Nouvelle séance
+          </Link>
+        </div>
+      </header>
 
-      {/* Tuiles de statistiques */}
+      {/* Tuiles pleine couleur */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatTile href="/clients?statut=actif" tone="brand" icon={<Users className="size-5" />} label="Clients actifs" value={active.length} sub={`${clients.length} clients au total`} series={activeSeries} />
-        <StatTile href="/seances" tone="accent" icon={<CalendarDays className="size-5" />} label="Séances cette semaine" value={thisWeek.length} sub="vs semaine passée" trend={delta} trendLabel={signed(delta)} series={weeks.map((w) => w.value)} />
-        <StatTile tone="green" icon={<CalendarCheck2 className="size-5" />} label="Taux de présence" value={attendance === null ? "–" : `${attendance}%`} sub="sur 6 semaines" trend={attDelta} trendLabel={`${signed(attDelta)} pts`} series={attendanceSeries} />
-        <StatTile href="/clients" tone="violet" icon={<ClipboardList className="size-5" />} label="Bilans à faire" value={due.length} sub={due.length ? "dernier bilan > 30 jours" : "tout est à jour"} trend={due.length ? -due.length : 0} trendLabel={due.length ? "à planifier" : "OK"} series={healthSeries} />
+        <SolidTile href="/clients?statut=actif" tone="brand" icon={<Users />} watermark={<Users />} label="Clients actifs" value={active.length} sub={`${clients.length} clients au total`} series={activeSeries} />
+        <SolidTile href="/seances" tone="accent" icon={<CalendarDays />} watermark={<Dumbbell />} label="Séances" value={thisWeek.length} sub="cette semaine" trendLabel={`${signed(delta)} vs sem. passée`} trendUp={delta === 0 ? null : delta > 0} series={weeks.map((w) => w.value)} />
+        <SolidTile tone="brand" icon={<CalendarCheck2 />} watermark={<Flame />} label="Présence" value={attendance === null ? "–" : `${attendance}%`} sub="sur 6 semaines" trendLabel={`${signed(attDelta)} pts`} trendUp={attDelta === 0 ? null : attDelta > 0} series={attendanceSeries} />
+        <SolidTile href="/clients" tone="accent" icon={<ClipboardList />} watermark={<HeartPulse />} label="Bilans à faire" value={due.length} sub={due.length ? "dernier bilan > 30 jours" : "tout est à jour 👌"} series={healthSeries} />
       </div>
 
       {/* Raccourcis */}
-      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <ShortcutTile href="/taches" icon={<ListChecks className="size-5" />} label="Tâches à faire" hint="aujourd'hui ou en retard" value={tasksDue ?? 0} hot={(tasksDue ?? 0) > 0} />
-        <ShortcutTile href="/messages" icon={<MessageCircle className="size-5" />} label="Messages non lus" hint="de vos clients" value={unread ?? 0} hot={(unread ?? 0) > 0} />
-        <ShortcutTile href="/reservations" icon={<CalendarCheck className="size-5" />} label="Réservations" hint="nouvelles demandes" value={bookings ?? 0} hot={(bookings ?? 0) > 0} />
-        <ShortcutTile href="/facturation" icon={<Receipt className="size-5" />} label="Encaissé ce mois" hint="factures payées, en MAD" value={new Intl.NumberFormat("fr-FR", { notation: "compact" }).format(revenue)} />
+      <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
+        {[
+          { href: "/taches", icon: ListChecks, label: "Tâches", hint: "à faire aujourd'hui", value: tasksDue ?? 0, color: "text-brand-600 bg-brand-50" },
+          { href: "/messages", icon: MessageCircle, label: "Messages", hint: "non lus", value: unread ?? 0, color: "text-accent-600 bg-accent-50" },
+          { href: "/reservations", icon: CalendarCheck, label: "Réservations", hint: "nouvelles demandes", value: bookings ?? 0, color: "text-brand-600 bg-brand-50" },
+          { href: "/facturation", icon: Receipt, label: "Encaissé", hint: "ce mois-ci", value: `${new Intl.NumberFormat("fr-FR", { notation: "compact" }).format(revenue)} MAD`, color: "text-accent-600 bg-accent-50" },
+        ].map((q) => (
+          <Link key={q.href} href={q.href} className="group flex items-center gap-3 rounded-2xl border border-line bg-white p-3 shadow-card transition hover:-translate-y-0.5 hover:shadow-pop sm:p-4">
+            <span className={`grid size-11 shrink-0 place-items-center rounded-xl ${q.color}`}>
+              <q.icon className="size-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-display text-lg font-extrabold leading-tight text-ink sm:text-xl">{q.value}</span>
+              <span className="block truncate text-xs text-muted">
+                <b className="font-semibold text-slate-600">{q.label}</b> · {q.hint}
+              </span>
+            </span>
+            <ChevronRight className="hidden size-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-brand-500 sm:block" />
+          </Link>
+        ))}
       </div>
 
-      <div className="mt-5 grid gap-5 xl:grid-cols-[1.6fr_1fr]">
-        <Card>
-          <CardHeader title="Séances du jour" icon={<CalendarDays className="size-4" />} action={<Badge>{today.length}</Badge>} />
+      <div className="mt-6 grid gap-5 xl:grid-cols-[1.55fr_1fr]">
+        {/* Séances du jour : frise */}
+        <Card className="overflow-hidden">
+          <div className="flex items-center justify-between bg-gradient-to-r from-brand-600 to-brand-500 px-5 py-4 text-white">
+            <div className="flex items-center gap-2.5">
+              <span className="grid size-9 place-items-center rounded-xl bg-white/20">
+                <CalendarDays className="size-[18px]" />
+              </span>
+              <div>
+                <h3 className="font-display text-[15px] font-bold">Séances du jour</h3>
+                <p className="text-xs text-white/75">{today.length} au planning</p>
+              </div>
+            </div>
+            <Link href="/seances" className="rounded-xl bg-white/15 px-3 py-1.5 text-xs font-bold ring-1 ring-white/25 transition hover:bg-white/25">
+              Planning →
+            </Link>
+          </div>
           {today.length === 0 ? (
             <Empty icon={<CalendarDays className="size-6" />} title="Aucune séance aujourd'hui" text="Planifie une séance pour la voir apparaître ici." action={<LinkButton href="/seances/nouvelle" variant="secondary">Planifier</LinkButton>} />
           ) : (
-            <ul className="divide-y divide-line px-2 pb-2">
+            <ol className="relative px-5 py-4">
+              <span className="absolute bottom-6 left-[88px] top-6 w-0.5 rounded bg-line" aria-hidden />
               {today.map((s) => {
                 const c = byId.get(s.client_id);
                 if (!c) return null;
+                const done = s.status === "realisee";
+                const isNext = nextSession?.id === s.id;
                 return (
-                  <li key={s.id}>
-                    <Link href={`/seances/${s.id}`} className="flex items-center gap-4 rounded-xl px-3 py-3 transition hover:bg-canvas">
-                      <span className="w-12 font-display text-sm font-bold text-brand-500">{fmtTime(s.starts_at)}</span>
-                      <Avatar name={c.full_name} size={36} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-semibold">{c.full_name}</span>
-                        <span className="block truncate text-xs text-muted">{s.type}</span>
+                  <li key={s.id} className="relative">
+                    <Link href={`/seances/${s.id}`} className="group flex items-center gap-4 rounded-2xl py-2.5 pr-2 transition hover:bg-canvas">
+                      <span className={`w-14 text-right font-display text-sm font-extrabold ${isNext ? "text-accent-600" : "text-brand-600"}`}>{fmtTime(s.starts_at)}</span>
+                      <span className={`relative z-10 grid size-5 shrink-0 place-items-center rounded-full ring-4 ring-white ${done ? "bg-emerald-500" : isNext ? "bg-accent-500" : "bg-brand-500"}`}>
+                        {isNext && <span className="absolute inset-0 animate-ping rounded-full bg-accent-400 opacity-60" />}
                       </span>
-                      {s.status === "realisee" ? <Badge tone="green">Réalisée</Badge> : s.status === "absent" ? <Badge tone="red">Absent</Badge> : <Badge tone="gray">{s.duration_min} min</Badge>}
-                      <ChevronRight className="size-4 text-slate-300" />
+                      <Avatar name={c.full_name} size={40} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-bold text-ink">{c.full_name}</span>
+                        <span className="block truncate text-xs text-muted">
+                          {s.type} · {s.duration_min} min
+                        </span>
+                      </span>
+                      {done ? <Badge tone="green">Réalisée</Badge> : s.status === "absent" ? <Badge tone="red">Absent</Badge> : isNext ? <Badge tone="accent">Prochaine</Badge> : <Badge tone="brand">Planifiée</Badge>}
                     </Link>
                   </li>
                 );
               })}
-            </ul>
+            </ol>
           )}
         </Card>
 
-        <Card>
-          <CardHeader title="Alertes santé" subtitle="D'après le dernier bilan" icon={<HeartPulse className="size-4" />} action={alerts.length ? <Badge tone="accent">{alerts.length}</Badge> : undefined} />
+        {/* Alertes santé */}
+        <Card className="overflow-hidden">
+          <div className="flex items-center justify-between bg-gradient-to-r from-accent-500 to-accent-400 px-5 py-4 text-white">
+            <div className="flex items-center gap-2.5">
+              <span className="grid size-9 place-items-center rounded-xl bg-white/20">
+                <HeartPulse className="size-[18px]" />
+              </span>
+              <div>
+                <h3 className="font-display text-[15px] font-bold">Alertes santé</h3>
+                <p className="text-xs text-white/80">D&apos;après le dernier bilan</p>
+              </div>
+            </div>
+            <span className="grid size-8 place-items-center rounded-full bg-white font-display text-sm font-extrabold text-accent-600">{alerts.length}</span>
+          </div>
           {alerts.length === 0 ? (
             <Empty icon={<HeartPulse className="size-6" />} title="Rien à signaler" text="Les alertes apparaissent quand un bilan signale une douleur, une tension élevée ou un mauvais sommeil." />
           ) : (
-            <ul className="space-y-2 px-5 pb-5">
-              {alerts.slice(0, 6).map(({ c, a }) => (
-                <li key={c.id}>
-                  <Link href={`/clients/${c.id}?tab=sante`} className="flex gap-3 rounded-xl bg-accent-50/70 p-3 ring-1 ring-accent-100 transition hover:bg-accent-50">
-                    <AlertTriangle className={a.some((x) => x.level === "high") ? "mt-0.5 size-4 shrink-0 text-accent-600" : "mt-0.5 size-4 shrink-0 text-amber-500"} />
-                    <span className="text-sm">
-                      <b className="text-ink">{c.full_name}</b>
-                      <span className="block text-xs text-slate-600">{a.map((x) => x.text).join(" · ")}</span>
-                    </span>
-                  </Link>
-                </li>
-              ))}
+            <ul className="space-y-2 p-4">
+              {alerts.slice(0, 5).map(({ c, a }) => {
+                const high = a.some((x) => x.level === "high");
+                return (
+                  <li key={c.id}>
+                    <Link href={`/clients/${c.id}?tab=sante`} className="flex items-center gap-3 rounded-2xl border border-line p-3 transition hover:border-accent-200 hover:bg-accent-50/50">
+                      <span className={`grid size-9 shrink-0 place-items-center rounded-xl ${high ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-600"}`}>
+                        <AlertTriangle className="size-[18px]" />
+                      </span>
+                      <span className="min-w-0 flex-1 text-sm">
+                        <b className="block truncate text-ink">{c.full_name}</b>
+                        <span className="block truncate text-xs text-slate-600">{a.map((x) => x.text).join(" · ")}</span>
+                      </span>
+                      <ChevronRight className="size-4 shrink-0 text-slate-300" />
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </Card>
@@ -223,26 +272,27 @@ export default async function Dashboard() {
             <WeeklyBars data={weeks} />
           </div>
         </Card>
-        <Card>
-          <CardHeader title="Meilleures progressions" subtitle="Depuis la première mesure" icon={<TrendingUp className="size-4" />} />
+        <Card className="overflow-hidden">
+          <CardHeader title="Meilleures progressions" subtitle="Depuis la première mesure" icon={<Trophy className="size-4" />} />
           {progress.length === 0 ? (
             <Empty icon={<TrendingUp className="size-6" />} title="Pas encore de données" text="Ajoute au moins deux mesures à un client pour voir sa progression." />
           ) : (
-            <ul className="divide-y divide-line px-2 pb-2">
-              {progress.map(({ c, dSq, dW }) => (
+            <ol className="space-y-1 px-3 pb-3">
+              {progress.map(({ c, dSq, dW }, i) => (
                 <li key={c.id}>
-                  <Link href={`/clients/${c.id}`} className="flex items-center gap-3 rounded-xl px-3 py-3 transition hover:bg-canvas">
-                    <Avatar name={c.full_name} size={36} />
+                  <Link href={`/clients/${c.id}`} className="flex items-center gap-3 rounded-2xl px-2 py-2.5 transition hover:bg-canvas">
+                    <span className={`grid size-8 shrink-0 place-items-center rounded-full font-display text-sm font-extrabold ${i === 0 ? "bg-accent-500 text-white" : i === 1 ? "bg-brand-500 text-white" : i === 2 ? "bg-brand-100 text-brand-700" : "bg-canvas text-slate-500"}`}>{i + 1}</span>
+                    <Avatar name={c.full_name} size={38} />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold">{c.full_name}</span>
+                      <span className="block truncate text-sm font-bold">{c.full_name}</span>
                       <span className="block truncate text-xs text-muted">{c.goal ?? "—"}</span>
                     </span>
                     {dSq > 0 && <Badge tone="green">Squat {signed(dSq, "kg")}</Badge>}
-                    {dW !== 0 && <Badge tone="brand">{signed(dW, "kg")}</Badge>}
+                    {dW !== 0 && <Badge tone={dW < 0 ? "brand" : "accent"}>{signed(dW, "kg")}</Badge>}
                   </Link>
                 </li>
               ))}
-            </ul>
+            </ol>
           )}
         </Card>
       </div>

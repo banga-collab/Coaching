@@ -17,15 +17,23 @@ import { ProgramTab } from "@/components/modules/program-tab";
 import { InvoicesTab } from "@/components/modules/invoices-tab";
 import { WhatsAppButton } from "@/components/modules/whatsapp-button";
 import { AiSummaryButton } from "@/components/modules/ai-summary";
+import { NutritionTab } from "@/components/modules/nutrition-tab";
+import { PhotosTab } from "@/components/modules/photos-tab";
+import { MembershipTab } from "@/components/modules/membership-tab";
+import { WorkoutsTab } from "@/components/modules/workouts-tab";
 
 const TABS = [
   { key: "progression", label: "Progression" },
   { key: "objectifs", label: "Objectifs" },
   { key: "seances", label: "Séances" },
   { key: "programme", label: "Programme" },
+  { key: "entrainements", label: "Entraînements" },
+  { key: "nutrition", label: "Nutrition" },
+  { key: "photos", label: "Photos" },
   { key: "evaluations", label: "Évaluations" },
   { key: "sante", label: "Santé" },
   { key: "documents", label: "Documents" },
+  { key: "abonnement", label: "Abonnement" },
   { key: "factures", label: "Factures" },
   { key: "infos", label: "Infos" },
 ];
@@ -136,6 +144,10 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
         {tab === "evaluations" && <AssessmentsTab clientId={id} canEdit />}
         {tab === "documents" && <DocumentsTab clientId={id} canEdit />}
         {tab === "factures" && <InvoicesTab clientId={id} canEdit />}
+        {tab === "nutrition" && <NutritionTab clientId={id} canEdit />}
+        {tab === "photos" && <PhotosTab clientId={id} canEdit />}
+        {tab === "abonnement" && <MembershipTab clientId={id} canEdit />}
+        {tab === "entrainements" && <WorkoutsTab clientId={id} canEdit />}
         {tab === "sante" && <HealthView checks={checks} heightCm={c.height_cm} lastWeight={lastWeight} clientId={id} canEdit />}
         {tab === "infos" && (
           <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">

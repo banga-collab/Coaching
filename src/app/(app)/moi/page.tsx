@@ -11,6 +11,7 @@ import { AssessmentsTab } from "@/components/modules/assessments-tab";
 import { DocumentsTab } from "@/components/modules/documents-tab";
 import { ProgramTab } from "@/components/modules/program-tab";
 import { InvoicesTab } from "@/components/modules/invoices-tab";
+import { PhotosTab } from "@/components/modules/photos-tab";
 
 export const metadata = { title: "Ma progression" };
 
@@ -21,6 +22,7 @@ const TABS = [
   { key: "seances", label: "Mes séances" },
   { key: "evaluations", label: "Évaluations" },
   { key: "sante", label: "Santé" },
+  { key: "photos", label: "Photos" },
   { key: "documents", label: "Documents" },
   { key: "factures", label: "Factures" },
 ];
@@ -95,6 +97,7 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
         {tab === "objectifs" && <GoalsTab clientId={c.id} canEdit={false} />}
         {tab === "programme" && <ProgramTab clientId={c.id} canEdit={false} />}
         {tab === "evaluations" && <AssessmentsTab clientId={c.id} canEdit={false} />}
+        {tab === "photos" && <PhotosTab clientId={c.id} canEdit={false} />}
         {tab === "documents" && <DocumentsTab clientId={c.id} canEdit={false} />}
         {tab === "factures" && <InvoicesTab clientId={c.id} canEdit={false} />}
         {tab === "sante" && <HealthView checks={checks} heightCm={c.height_cm} lastWeight={lastWeight} clientId={c.id} canEdit={false} />}

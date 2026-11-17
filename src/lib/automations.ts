@@ -1,9 +1,17 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Automation, AutomationId, Client, Goal, GoalMetric, HealthCheck, Invoice, Measurement, Session, Task } from "./types";
-import { addDays, dayKey } from "./utils";
+import type { Automation, AutomationId, Client, Goal, GoalMetric, HealthCheck, Invoice, Measurement, Membership, Session, Task, WhatsAppMessage } from "./types";
+import { addDays, dayKey, fmtDate, fmtTime } from "./utils";
+import { WA_TEMPLATES } from "./whatsapp";
+import { sendWhatsApp } from "./whatsapp-api";
+import { membershipExpiringText } from "@/components/whatsapp/templates";
+
+/** Règles ajoutées par le module WhatsApp / abonnements (en plus des `AutomationId` historiques). */
+export type WaRuleId = "wa_session_reminder" | "wa_invoice_overdue" | "wa_checkin_missing" | "membership_expiring";
+export type RuleId = AutomationId | WaRuleId;
+export type AutomationRule = Omit<Automation, "id"> & { id: RuleId };
 
 /* ================= Métadonnées des règles ================= */
-export type AutomationParam = { key: "days" | "count"; label: string; unit: string; min: number; max: number; def: number };
+export type AutomationParam = { key: "days" | "count" | "hours"; label: string; unit: string; min: number; max: number; def: number };
 export type AutomationMeta = {
   title: string;
   description: (p: Record<string, number>) => string;
@@ -11,16 +19,23 @@ export type AutomationMeta = {
   param?: AutomationParam;
 };
 
-export const AUTOMATION_ORDER: AutomationId[] = [
+export const AUTOMATION_ORDER: RuleId[] = [
   "checkin_reminder",
   "health_check_due",
   "absence_followup",
   "invoice_overdue",
   "goal_reached",
   "inactive_client",
+  "membership_expiring",
+  "wa_session_reminder",
+  "wa_invoice_overdue",
+  "wa_checkin_missing",
 ];
 
-export const AUTOMATION_META: Record<AutomationId, AutomationMeta> = {
+/** Règles qui envoient (ou simulent) un message WhatsApp. */
+export const WHATSAPP_RULES: RuleId[] = ["wa_session_reminder", "wa_invoice_overdue", "wa_checkin_missing", "membership_expiring"];
+
+export const AUTOMATION_META: Record<RuleId, AutomationMeta> = {
   checkin_reminder: {
     title: "Rappel de check-in",
     description: (p) =>
@@ -62,19 +77,77 @@ export const AUTOMATION_META: Record<AutomationId, AutomationMeta> = {
     effect: "Tâche pour le coach",
     param: { key: "days", label: "Délai sans séance", unit: "jours", min: 3, max: 90, def: 14 },
   },
+  membership_expiring: {
+    title: "Abonnement bientôt terminé",
+    description: (p) =>
+      `Quand un abonnement actif se termine dans ${p.days ?? 7} jours ou moins (et n'a pas déjà été renouvelé), le membre est prévenu dans son espace et sur WhatsApp, et une tâche de renouvellement est créée pour son coach. Une seule fois par abonnement.`,
+    effect: "Notification + tâche + WhatsApp",
+    param: { key: "days", label: "Prévenir avant la fin", unit: "jours", min: 1, max: 60, def: 7 },
+  },
+  wa_session_reminder: {
+    title: "WhatsApp : rappel de séance",
+    description: (p) =>
+      `Chaque séance planifiée qui commence dans les ${p.hours ?? 24} prochaines heures déclenche un rappel WhatsApp au client (un seul message par client et par jour).`,
+    effect: "Message WhatsApp au client",
+    param: { key: "hours", label: "Fenêtre avant la séance", unit: "heures", min: 2, max: 72, def: 24 },
+  },
+  wa_invoice_overdue: {
+    title: "WhatsApp : facture en retard",
+    description: (p) =>
+      `Quand une facture envoyée n'est pas payée ${p.days ?? 3} jour${(p.days ?? 3) > 1 ? "s" : ""} après son échéance, le client reçoit une relance WhatsApp courtoise. Une seule relance par facture.`,
+    effect: "Message WhatsApp au client",
+    param: { key: "days", label: "Retard minimum", unit: "jours", min: 1, max: 60, def: 3 },
+  },
+  wa_checkin_missing: {
+    title: "WhatsApp : check-in manquant",
+    description: (p) =>
+      `Quand un membre qui a un compte n'a pas fait de check-in depuis ${p.days ?? 7} jours, il reçoit un petit rappel WhatsApp (au maximum une fois par semaine).`,
+    effect: "Message WhatsApp au membre",
+    param: { key: "days", label: "Délai sans check-in", unit: "jours", min: 3, max: 60, def: 7 },
+  },
 };
 
-export const DEFAULT_PARAMS: Record<AutomationId, Record<string, number>> = {
+export const DEFAULT_PARAMS: Record<RuleId, Record<string, number>> = {
   checkin_reminder: { days: 7 },
   health_check_due: { days: 30 },
   absence_followup: { count: 2 },
   invoice_overdue: { days: 0 },
   goal_reached: {},
   inactive_client: { days: 14 },
+  membership_expiring: { days: 7 },
+  wa_session_reminder: { hours: 24 },
+  wa_invoice_overdue: { days: 3 },
+  wa_checkin_missing: { days: 7 },
 };
 
+/** État par défaut quand la ligne n'existe pas encore en base (identique au seed SQL). */
+export const DEFAULT_ENABLED: Record<RuleId, boolean> = {
+  checkin_reminder: true,
+  health_check_due: true,
+  absence_followup: true,
+  invoice_overdue: true,
+  goal_reached: true,
+  inactive_client: true,
+  membership_expiring: true,
+  wa_session_reminder: false,
+  wa_invoice_overdue: false,
+  wa_checkin_missing: false,
+};
+
+type RuleRow = { id: string; enabled: boolean; params: Record<string, number> | null; last_run: string | null; last_count: number | null };
+
+/** Règles complètes (lignes en base + valeurs par défaut), dans l'ordre d'affichage. */
+export function withDefaults(rows: RuleRow[]): AutomationRule[] {
+  return AUTOMATION_ORDER.map((id) => {
+    const r = rows.find((x) => x.id === id);
+    return r
+      ? { id, enabled: r.enabled, params: r.params ?? {}, last_run: r.last_run, last_count: r.last_count }
+      : { id, enabled: DEFAULT_ENABLED[id], params: DEFAULT_PARAMS[id], last_run: null, last_count: null };
+  });
+}
+
 /* ================= Exécution ================= */
-export type AutomationResult = { id: AutomationId; title: string; count: number; skipped?: boolean; error?: string };
+export type AutomationResult = { id: RuleId; title: string; count: number; skipped?: boolean; error?: string };
 export type AutomationSummary = { ranAt: string; total: number; results: AutomationResult[] };
 
 const MEASURE_COLS: Partial<Record<GoalMetric, keyof Measurement>> = {
@@ -94,7 +167,7 @@ const fmtN = (n: number) => new Intl.NumberFormat("fr-FR", { maximumFractionDigi
  */
 export async function runAutomations(
   supabase: SupabaseClient,
-  opts: { only?: AutomationId[]; actorId?: string | null; includeDisabled?: boolean } = {},
+  opts: { only?: RuleId[]; actorId?: string | null; includeDisabled?: boolean } = {},
 ): Promise<AutomationSummary> {
   const now = new Date();
   const ranAt = now.toISOString();
@@ -112,10 +185,7 @@ export async function runAutomations(
     supabase.from("tasks").select("*").ilike("source", "auto:%").gte("created_at", addDays(now, -180).toISOString()),
   ]);
 
-  const rows = (aRes.data ?? []) as Automation[];
-  const rules: Automation[] = AUTOMATION_ORDER.map(
-    (id) => rows.find((r) => r.id === id) ?? { id, enabled: true, params: DEFAULT_PARAMS[id], last_run: null, last_count: null },
-  );
+  const rules = withDefaults((aRes.data ?? []) as RuleRow[]);
   const clients = (cRes.data ?? []) as Client[];
   const clientById = new Map(clients.map((c) => [c.id, c]));
   const active = clients.filter((c) => c.status === "actif");
@@ -131,7 +201,7 @@ export async function runAutomations(
 
   const open = new Set(autoTasks.filter((t) => !t.done).map((t) => `${t.source}|${t.client_id ?? ""}`));
 
-  async function addTask(rule: AutomationId, client: Client, title: string, priority: Task["priority"] = "normale", notes: string | null = null) {
+  async function addTask(rule: RuleId, client: Client, title: string, priority: Task["priority"] = "normale", notes: string | null = null) {
     const source = `auto:${rule}`;
     const key = `${source}|${client.id}`;
     if (open.has(key)) return false;
@@ -159,7 +229,30 @@ export async function runAutomations(
     if (error) throw new Error(error.message);
   }
 
-  const handlers: Record<AutomationId, (p: Record<string, number>) => Promise<number>> = {
+  /* ---------- WhatsApp : historique (anti-doublon) + envoi ---------- */
+  type WaLog = Pick<WhatsAppMessage, "client_id" | "template" | "body" | "created_at">;
+  let waLog: WaLog[] | null = null;
+  async function waHistory() {
+    if (!waLog) {
+      const { data, error } = await supabase
+        .from("whatsapp_messages")
+        .select("client_id, template, body, created_at")
+        .in("template", ["session_reminder", "invoice_overdue", "checkin_missing", "membership_expiring"])
+        .gte("created_at", addDays(now, -400).toISOString());
+      if (error) throw new Error(error.message);
+      waLog = (data ?? []) as WaLog[];
+    }
+    return waLog;
+  }
+  async function wa(c: Client, template: string, body: string, params: string[]) {
+    const res = await sendWhatsApp({ to: c.phone, body, template, clientId: c.id, params }, supabase);
+    (await waHistory()).push({ client_id: c.id, template, body, created_at: ranAt });
+    return res.ok;
+  }
+  const firstName = (c: Client) => c.full_name.split(" ")[0] ?? c.full_name;
+  const madTxt = (v: number) => `${new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2 }).format(Number(v))} MAD`;
+
+  const handlers: Record<RuleId, (p: Record<string, number>) => Promise<number>> = {
     async checkin_reminder(p) {
       const limit = daysAgo(p.days ?? 7);
       let n = 0;
@@ -273,6 +366,95 @@ export async function runAutomations(
         if (recent || planned) continue;
         if (new Date(c.start_date) > since) continue; // client trop récent
         if (await addTask("inactive_client", c, `Relancer ${c.full_name} : aucune séance depuis ${days} jours`, "normale")) n++;
+      }
+      return n;
+    },
+
+    async membership_expiring(p) {
+      const days = p.days ?? 7;
+      const limit = dayKey(addDays(now, days));
+      const { data, error } = await supabase.from("memberships").select("*").eq("status", "actif");
+      if (error) throw new Error(error.message);
+      const all = (data ?? []) as Membership[];
+      let n = 0;
+      for (const m of all) {
+        if (m.end_date < today || m.end_date > limit) continue;
+        // Déjà renouvelé : un autre abonnement actif du même membre se termine plus tard
+        if (all.some((o) => o.id !== m.id && o.client_id === m.client_id && o.end_date > m.end_date)) continue;
+        const c = clientById.get(m.client_id);
+        if (!c || c.status === "termine") continue;
+        const dateLabel = fmtDate(`${m.end_date}T12:00:00`, { day: "numeric", month: "long" });
+        if (autoTasks.some((t) => t.source === "auto:membership_expiring" && t.client_id === c.id && t.title.includes(m.name) && t.title.includes(dateLabel))) continue;
+        const created = await addTask(
+          "membership_expiring",
+          c,
+          `Renouvellement : « ${m.name} » de ${c.full_name} se termine le ${dateLabel}`,
+          "haute",
+          m.sessions_total ? `${m.sessions_used}/${m.sessions_total} séances utilisées.` : null,
+        );
+        if (!created) continue;
+        await notify(c.user_id, "Ton abonnement se termine bientôt", `« ${m.name} » prend fin le ${dateLabel}. Pense à le renouveler pour continuer sur ta lancée 💪`, "/moi/carte", "alerte");
+        if (c.phone) await wa(c, "membership_expiring", membershipExpiringText(firstName(c), m.name, dateLabel), [firstName(c), m.name, dateLabel]);
+        n++;
+      }
+      return n;
+    },
+
+    async wa_session_reminder(p) {
+      const hours = p.hours ?? 24;
+      const until = new Date(now.getTime() + hours * 3_600_000);
+      const { data, error } = await supabase
+        .from("sessions")
+        .select("*")
+        .eq("status", "planifiee")
+        .gte("starts_at", now.toISOString())
+        .lte("starts_at", until.toISOString())
+        .order("starts_at", { ascending: true });
+      if (error) throw new Error(error.message);
+      const log = await waHistory();
+      const tomorrow = dayKey(addDays(now, 1));
+      let n = 0;
+      for (const s of (data ?? []) as Session[]) {
+        const c = clientById.get(s.client_id);
+        if (!c || !c.phone || c.status === "termine") continue;
+        // Un seul rappel par client et par jour
+        if (log.some((m) => m.template === "session_reminder" && m.client_id === c.id && dayKey(m.created_at) === today)) continue;
+        const d = dayKey(s.starts_at);
+        const dayTxt = d === today ? "aujourd'hui" : d === tomorrow ? "demain" : `le ${fmtDate(s.starts_at, { weekday: "long", day: "numeric", month: "long" })}`;
+        const when = `${dayTxt} à ${fmtTime(s.starts_at)}`;
+        if (await wa(c, "session_reminder", WA_TEMPLATES.sessionReminder(firstName(c), when), [firstName(c), when])) n++;
+      }
+      return n;
+    },
+
+    async wa_invoice_overdue(p) {
+      const limit = daysAgo(Math.max(1, p.days ?? 3));
+      const log = await waHistory();
+      let n = 0;
+      for (const inv of invoices) {
+        if (!inv.due_on || inv.due_on > limit) continue;
+        const c = clientById.get(inv.client_id);
+        if (!c || !c.phone) continue;
+        // Une seule relance par facture
+        if (log.some((m) => m.template === "invoice_overdue" && m.client_id === c.id && m.body.includes(inv.number))) continue;
+        const amount = madTxt(inv.amount_mad);
+        if (await wa(c, "invoice_overdue", WA_TEMPLATES.invoice(firstName(c), inv.number, amount), [firstName(c), inv.number, amount])) n++;
+      }
+      return n;
+    },
+
+    async wa_checkin_missing(p) {
+      const limit = daysAgo(p.days ?? 7);
+      const weekAgo = addDays(now, -7).toISOString();
+      const log = await waHistory();
+      let n = 0;
+      for (const c of active) {
+        if (!c.user_id || !c.phone) continue;
+        const last = lastHealth.get(c.id);
+        if (last && last >= limit) continue;
+        // Au maximum une fois par semaine
+        if (log.some((m) => m.template === "checkin_missing" && m.client_id === c.id && m.created_at >= weekAgo)) continue;
+        if (await wa(c, "checkin_missing", WA_TEMPLATES.checkin(firstName(c)), [firstName(c)])) n++;
       }
       return n;
     },

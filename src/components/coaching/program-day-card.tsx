@@ -1,9 +1,22 @@
 import { Dumbbell } from "lucide-react";
-import type { ProgramDay } from "@/lib/types";
+import type { Exercise, ProgramDay } from "@/lib/types";
+import { normName } from "@/lib/video";
 import { Card } from "@/components/ui";
+import { ExerciseVideoButton } from "@/components/exercises/exercise-modal";
+import { getExerciseLibrary } from "@/components/exercises/library-data";
 
-/** Carte d'une journée de programme (lecture seule, imprimable). */
-export function ProgramDayCard({ day, index, compact }: { day: ProgramDay; index: number; compact?: boolean }) {
+/**
+ * Carte d'une journée de programme (lecture seule, imprimable).
+ * Les exercices présents dans la vidéothèque ouvrent leur fiche vidéo.
+ * `library` est optionnel : à défaut, la vidéothèque est chargée (une fois par requête).
+ */
+export async function ProgramDayCard({ day, index, compact, library }: { day: ProgramDay; index: number; compact?: boolean; library?: Exercise[] }) {
+  const lib = library ?? (await getExerciseLibrary());
+  const byName = new Map(lib.map((e) => [normName(e.name), e]));
+  const name = (n: string) => {
+    const ex = byName.get(normName(n));
+    return ex ? <ExerciseVideoButton exercise={ex} /> : <span className="font-semibold text-ink">{n}</span>;
+  };
   return (
     <Card className="overflow-hidden break-inside-avoid">
       <div className="flex items-center gap-3 border-b border-line bg-gradient-to-r from-brand-50/80 to-white px-4 py-3">
@@ -35,7 +48,7 @@ export function ProgramDayCard({ day, index, compact }: { day: ProgramDay; index
               {day.exercises.map((e, i) => (
                 <tr key={i} className="align-top transition hover:bg-canvas/60">
                   <td className="px-4 py-2.5">
-                    <span className="font-semibold text-ink">{e.name}</span>
+                    {name(e.name)}
                     {e.notes && <span className="mt-0.5 block text-xs text-muted">{e.notes}</span>}
                   </td>
                   <td className="px-3 py-2.5 text-center font-semibold text-brand-600">{e.sets ?? "–"}</td>
@@ -54,7 +67,7 @@ export function ProgramDayCard({ day, index, compact }: { day: ProgramDay; index
                   <Dumbbell className="size-3.5" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-ink">{e.name}</p>
+                  <p>{name(e.name)}</p>
                   <p className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted">
                     {(e.sets || e.reps) && (
                       <span className="font-semibold text-brand-600">

@@ -1,10 +1,13 @@
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, ChevronRight, Clock, Plus, Receipt } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronRight, Clock, CreditCard, Lock, Plus, Receipt } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { getSettings } from "@/lib/settings";
+import { canSimulate, ONLINE_METHOD, paymentMode } from "@/lib/payments";
 import type { Invoice } from "@/lib/types";
 import { cn, fmtDate } from "@/lib/utils";
 import { Badge, Card, CardHeader, Empty, LinkButton } from "@/components/ui";
 import { INVOICE_STATE, invoiceState, mad, todayKey } from "@/components/business/format";
+import { CardMarks } from "@/components/payments/marks";
 
 export async function InvoicesTab({ clientId, canEdit }: { clientId: string; canEdit: boolean }) {
   const supabase = await createClient();
@@ -17,6 +20,9 @@ export async function InvoicesTab({ clientId, canEdit }: { clientId: string; can
   const open = invoices.filter((i) => i.status === "envoyee");
   const outstanding = open.reduce((s, i) => s + Number(i.amount_mad), 0);
   const lateCount = open.filter((i) => invoiceState(i, today) === "retard").length;
+  // Paiement en ligne (Stripe / CMI / simulé) : disponible si un prestataire est actif
+  const { mode } = paymentMode(await getSettings());
+  const canPayOnline = mode !== "off" && (mode !== "demo" || canSimulate(canEdit ? "coach" : "client"));
 
   const stats = [
     { label: canEdit ? "Total payé" : "Total réglé", value: mad(paid), icon: CheckCircle2, cls: "bg-emerald-50 text-emerald-600" },
@@ -47,6 +53,27 @@ export async function InvoicesTab({ clientId, canEdit }: { clientId: string; can
         ))}
       </div>
 
+      {canPayOnline && !canEdit && open.length > 0 && (
+        <Card className="relative overflow-hidden">
+          <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-accent-500 to-brand-500" />
+          <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
+            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent-50 text-accent-600">
+              <CreditCard className="size-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-display text-[15px] font-bold text-ink">
+                {open.length > 1 ? `${open.length} factures à régler` : "1 facture à régler"} · {mad(outstanding)}
+              </p>
+              <p className="mt-0.5 text-sm text-muted">Paie en ligne par carte en quelques secondes, en toute sécurité.</p>
+              <CardMarks provider={mode} className="mt-2" />
+            </div>
+            <LinkButton href={open.length === 1 ? `/paiement/${open[0]!.id}` : "/paiement"} className="h-12 w-full sm:h-11 sm:w-auto">
+              <Lock className="size-4" /> Payer en ligne
+            </LinkButton>
+          </div>
+        </Card>
+      )}
+
       <Card className="overflow-hidden">
         <CardHeader
           title={canEdit ? "Factures" : "Mes factures"}
@@ -70,9 +97,10 @@ export async function InvoicesTab({ clientId, canEdit }: { clientId: string; can
           <ul className="divide-y divide-line border-t border-line">
             {invoices.map((i) => {
               const st = INVOICE_STATE[invoiceState(i, today)];
+              const payable = canPayOnline && i.status === "envoyee";
               return (
-                <li key={i.id}>
-                  <Link href={`/facturation/${i.id}`} className="group flex items-center gap-3 px-5 py-3.5 transition hover:bg-canvas/70">
+                <li key={i.id} className="flex items-center">
+                  <Link href={`/facturation/${i.id}`} className="group flex min-w-0 flex-1 items-center gap-3 px-5 py-3.5 transition hover:bg-canvas/70">
                     <span className={cn("grid size-10 shrink-0 place-items-center rounded-xl", i.status === "payee" ? "bg-emerald-50 text-emerald-600" : "bg-slate-50 text-slate-500")}>
                       <Receipt className="size-[18px]" />
                     </span>
@@ -86,6 +114,7 @@ export async function InvoicesTab({ clientId, canEdit }: { clientId: string; can
                       <span className="block truncate text-xs text-muted">
                         {i.lines[0]?.label ?? "—"} · {fmtDate(i.issued_on)}
                         {i.status === "payee" && i.paid_on ? ` · payée le ${fmtDate(i.paid_on, { day: "numeric", month: "short" })}` : ""}
+                        {i.status === "payee" && i.method === ONLINE_METHOD ? " · en ligne" : ""}
                         {i.status === "envoyee" && i.due_on ? ` · échéance ${fmtDate(i.due_on, { day: "numeric", month: "short" })}` : ""}
                       </span>
                     </span>
@@ -97,6 +126,16 @@ export async function InvoicesTab({ clientId, canEdit }: { clientId: string; can
                     </span>
                     <ChevronRight className="size-4 shrink-0 text-slate-300 group-hover:text-brand-500" />
                   </Link>
+                  {payable && (
+                    <Link
+                      href={`/paiement/${i.id}`}
+                      aria-label={`Payer en ligne la facture ${i.number}`}
+                      className="mr-4 inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-accent-500 px-3 text-xs font-semibold text-white shadow-sm shadow-accent-500/20 transition hover:bg-accent-600"
+                    >
+                      <CreditCard className="size-4" />
+                      <span className="hidden sm:inline">Payer</span>
+                    </Link>
+                  )}
                 </li>
               );
             })}

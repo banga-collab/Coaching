@@ -27,6 +27,8 @@ export interface Client {
   start_date: string;
   notes: string | null;
   created_at: string;
+  access_code?: string | null;
+  referral_code?: string | null;
 }
 
 export interface Session {
@@ -113,6 +115,10 @@ export interface Settings {
   booking_hours: { start: string; end: string; days: number[]; slot: number };
   calendar_token: string;
   webhook_url: string | null;
+  payment_provider?: "stripe" | "cmi" | "aucun";
+  referral_reward_mad?: number;
+  referral_discount_pct?: number;
+  whatsapp_enabled?: boolean;
 }
 
 export type FieldType = "number" | "scale" | "text" | "choice" | "yesno";
@@ -290,7 +296,17 @@ export interface BookingRequest {
   created_at: string;
 }
 
-export type AutomationId = "checkin_reminder" | "health_check_due" | "absence_followup" | "invoice_overdue" | "goal_reached" | "inactive_client";
+export type AutomationId =
+  | "checkin_reminder"
+  | "health_check_due"
+  | "absence_followup"
+  | "invoice_overdue"
+  | "goal_reached"
+  | "inactive_client"
+  | "wa_session_reminder"
+  | "wa_invoice_overdue"
+  | "wa_checkin_missing"
+  | "membership_expiring";
 export interface Automation {
   id: AutomationId;
   enabled: boolean;
@@ -298,3 +314,5 @@ export interface Automation {
   last_run: string | null;
   last_count: number | null;
 }
+
+export * from "./types-v3";

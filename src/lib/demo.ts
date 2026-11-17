@@ -5,6 +5,7 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { seedExtra } from "./demo-extra";
+import { seedV3 } from "./demo-v3";
 import { agadirToIso } from "./utils";
 
 export const DEMO = process.env.NEXT_PUBLIC_DEMO === "1";
@@ -212,13 +213,14 @@ function seed(): DB {
   });
 
   const base: DB = { profiles, clients, measurements, health_checks, sessions, session_exercises };
-  return { ...base, ...seedExtra(base, uid) };
+  const withExtra: DB = { ...base, ...seedExtra(base, uid) };
+  return { ...withExtra, ...seedV3(withExtra, uid) };
 }
 
-const g = globalThis as unknown as { __moovupDemoV4?: DB };
+const g = globalThis as unknown as { __moovupDemoV7?: DB };
 export function demoDb(): DB {
-  if (!g.__moovupDemoV4) g.__moovupDemoV4 = seed();
-  return g.__moovupDemoV4;
+  if (!g.__moovupDemoV7) g.__moovupDemoV7 = seed();
+  return g.__moovupDemoV7;
 }
 
 /* ---------- Faux constructeur de requêtes ---------- */

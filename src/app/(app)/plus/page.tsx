@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import { requireStaff } from "@/lib/auth";
+import { getProfile } from "@/lib/auth";
 import { navFor } from "@/lib/nav";
 import { Card, PageHeader } from "@/components/ui";
 
 export const metadata = { title: "Menu" };
 
 export default async function MorePage() {
-  const me = await requireStaff();
+  const me = await getProfile();
   return (
     <>
       <PageHeader title="Menu" subtitle="Toutes les sections de l'application" />

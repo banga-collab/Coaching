@@ -647,3 +647,368 @@ create policy "documents storage client" on storage.objects for select
   using (bucket_id = 'documents' and exists (
     select 1 from documents d join clients c on c.id = d.client_id
     where d.storage_path = storage.objects.name and d.shared and c.user_id = auth.uid()));
+
+-- =============================================================
+-- MODULES V3 : nutrition, photos, abonnements & accès, paiement en ligne,
+-- WhatsApp, défis, cours collectifs, vidéothèque, suivi de séance, parrainage
+-- =============================================================
+
+-- Codes personnels des adhérents (QR d'accès + parrainage)
+alter table clients add column if not exists access_code text unique default upper(encode(gen_random_bytes(5), 'hex'));
+alter table clients add column if not exists referral_code text unique default upper(substr(encode(gen_random_bytes(4), 'hex'), 1, 6));
+
+alter table settings add column if not exists payment_provider text not null default 'stripe';   -- stripe | cmi | aucun
+alter table settings add column if not exists referral_reward_mad numeric(10,2) not null default 200;
+alter table settings add column if not exists referral_discount_pct int not null default 10;
+alter table settings add column if not exists whatsapp_enabled boolean not null default false;
+
+-- ---------- Nutrition ----------
+create table if not exists foods (
+  id         uuid primary key default gen_random_uuid(),
+  name       text not null,
+  category   text not null default 'Autre',
+  portion    text,                 -- ex. "1 bol (250 g)"
+  grams      numeric not null default 100,  -- poids de la portion
+  kcal       numeric not null,     -- pour la portion
+  protein    numeric not null default 0,
+  carbs      numeric not null default 0,
+  fat        numeric not null default 0,
+  moroccan   boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists meal_plans (
+  id          uuid primary key default gen_random_uuid(),
+  client_id   uuid references clients(id) on delete cascade,  -- null = modèle
+  name        text not null,
+  goal        text,
+  target_kcal int,
+  protein_g   int,
+  carbs_g     int,
+  fat_g       int,
+  meals       jsonb not null default '[]', -- [{name,time,items:[{food_id?,name,qty,unit?,kcal,protein,carbs,fat}]}]
+  notes       text,
+  active      boolean not null default true,
+  created_by  uuid references profiles(id) on delete set null default auth.uid(),
+  created_at  timestamptz not null default now()
+);
+create index if not exists meal_plans_idx on meal_plans(client_id);
+
+create table if not exists food_logs (
+  id        uuid primary key default gen_random_uuid(),
+  client_id uuid not null references clients(id) on delete cascade,
+  logged_on date not null default current_date,
+  meal      text not null default 'Déjeuner',  -- Petit-déjeuner | Déjeuner | Goûter | Dîner | Collation
+  food_name text not null,
+  qty       numeric not null default 1,
+  kcal      numeric not null default 0,
+  protein   numeric not null default 0,
+  carbs     numeric not null default 0,
+  fat       numeric not null default 0,
+  water_ml  int,
+  created_at timestamptz not null default now()
+);
+create index if not exists food_logs_idx on food_logs(client_id, logged_on);
+
+-- ---------- Photos avant / après ----------
+create table if not exists progress_photos (
+  id           uuid primary key default gen_random_uuid(),
+  client_id    uuid not null references clients(id) on delete cascade,
+  taken_on     date not null default current_date,
+  pose         text not null default 'face' check (pose in ('face','profil','dos')),
+  storage_path text,
+  url          text,                          -- URL publique/externe (démo)
+  weight_kg    numeric(5,1),
+  notes        text,
+  shared_publicly boolean not null default false,  -- accord pour la communication de la salle
+  created_by   uuid references profiles(id) on delete set null default auth.uid(),
+  created_at   timestamptz not null default now()
+);
+create index if not exists progress_photos_idx on progress_photos(client_id, taken_on);
+
+-- ---------- Abonnements & accès salle ----------
+create table if not exists memberships (
+  id             uuid primary key default gen_random_uuid(),
+  client_id      uuid not null references clients(id) on delete cascade,
+  package_id     uuid references packages(id) on delete set null,
+  name           text not null,
+  start_date     date not null default current_date,
+  end_date       date not null,
+  sessions_total int,
+  sessions_used  int not null default 0,
+  price_mad      numeric(10,2),
+  status         text not null default 'actif' check (status in ('actif','suspendu','annule')),
+  auto_renew     boolean not null default false,
+  created_at     timestamptz not null default now()
+);
+create index if not exists memberships_idx on memberships(client_id, end_date);
+
+create table if not exists gym_checkins (
+  id          uuid primary key default gen_random_uuid(),
+  client_id   uuid not null references clients(id) on delete cascade,
+  checked_at  timestamptz not null default now(),
+  method      text not null default 'qr' check (method in ('qr','manuel','code')),
+  created_by  uuid references profiles(id) on delete set null default auth.uid()
+);
+create index if not exists gym_checkins_idx on gym_checkins(client_id, checked_at desc);
+
+-- ---------- Paiement en ligne ----------
+create table if not exists online_payments (
+  id           uuid primary key default gen_random_uuid(),
+  invoice_id   uuid not null references invoices(id) on delete cascade,
+  client_id    uuid not null references clients(id) on delete cascade,
+  provider     text not null check (provider in ('stripe','cmi','demo')),
+  provider_ref text,
+  amount_mad   numeric(10,2) not null,
+  status       text not null default 'en_attente' check (status in ('en_attente','reussi','echoue')),
+  created_at   timestamptz not null default now(),
+  paid_at      timestamptz
+);
+
+-- ---------- WhatsApp ----------
+create table if not exists whatsapp_messages (
+  id         uuid primary key default gen_random_uuid(),
+  client_id  uuid references clients(id) on delete set null,
+  to_phone   text not null,
+  template   text not null,             -- session_reminder | invoice_overdue | checkin_missing | membership_expiring | manuel
+  body       text not null,
+  status     text not null default 'en_attente' check (status in ('en_attente','envoye','simule','echec')),
+  error      text,
+  provider_id text,
+  created_at timestamptz not null default now(),
+  sent_at    timestamptz
+);
+create index if not exists whatsapp_idx on whatsapp_messages(created_at desc);
+
+insert into automations (id, params, enabled) values
+  ('wa_session_reminder', '{"hours":24}', false),
+  ('wa_invoice_overdue', '{"days":3}', false),
+  ('wa_checkin_missing', '{"days":7}', false),
+  ('membership_expiring', '{"days":7}', true)
+on conflict do nothing;
+
+-- ---------- Défis & badges ----------
+create table if not exists challenges (
+  id          uuid primary key default gen_random_uuid(),
+  title       text not null,
+  description text,
+  metric      text not null default 'presences',  -- presences | squat_kg | pas | custom
+  unit        text,
+  goal_value  numeric,
+  start_date  date not null,
+  end_date    date not null,
+  reward      text,
+  cover       text,                                -- couleur/emoji
+  created_by  uuid references profiles(id) on delete set null default auth.uid(),
+  created_at  timestamptz not null default now()
+);
+
+create table if not exists challenge_entries (
+  id           uuid primary key default gen_random_uuid(),
+  challenge_id uuid not null references challenges(id) on delete cascade,
+  client_id    uuid not null references clients(id) on delete cascade,
+  value        numeric not null default 0,
+  updated_at   timestamptz not null default now(),
+  unique (challenge_id, client_id)
+);
+
+create table if not exists badges (
+  id        uuid primary key default gen_random_uuid(),
+  client_id uuid not null references clients(id) on delete cascade,
+  code      text not null,
+  label     text not null,
+  earned_on date not null default current_date,
+  unique (client_id, code)
+);
+
+-- ---------- Cours collectifs ----------
+create table if not exists group_classes (
+  id           uuid primary key default gen_random_uuid(),
+  title        text not null,
+  category     text not null default 'HIIT',   -- CrossFit | HIIT | Yoga | Pilates | Cardio | Renforcement
+  coach_id     uuid references profiles(id) on delete set null,
+  starts_at    timestamptz not null,
+  duration_min int not null default 60,
+  capacity     int not null default 12,
+  room         text,
+  level        text default 'Tous niveaux',
+  description  text,
+  cancelled    boolean not null default false,
+  created_at   timestamptz not null default now()
+);
+create index if not exists group_classes_idx on group_classes(starts_at);
+
+create table if not exists class_bookings (
+  id         uuid primary key default gen_random_uuid(),
+  class_id   uuid not null references group_classes(id) on delete cascade,
+  client_id  uuid not null references clients(id) on delete cascade,
+  status     text not null default 'inscrit' check (status in ('inscrit','attente','annule','present','absent')),
+  created_at timestamptz not null default now(),
+  unique (class_id, client_id)
+);
+
+-- ---------- Vidéothèque d'exercices ----------
+create table if not exists exercises (
+  id           uuid primary key default gen_random_uuid(),
+  name         text not null unique,
+  category     text not null default 'Musculation',
+  muscles      text[] not null default '{}',
+  equipment    text,
+  level        text default 'Tous niveaux',
+  video_url    text,          -- YouTube, Vimeo ou fichier mp4
+  instructions text,
+  tips         text,
+  created_at   timestamptz not null default now()
+);
+
+-- ---------- Suivi pendant la séance ----------
+create table if not exists workout_logs (
+  id          uuid primary key default gen_random_uuid(),
+  client_id   uuid not null references clients(id) on delete cascade,
+  program_id  uuid references programs(id) on delete set null,
+  day_title   text,
+  started_at  timestamptz not null default now(),
+  finished_at timestamptz,
+  entries     jsonb not null default '[]',  -- [{exercise, sets:[{reps, load, done}]}]
+  rpe         int check (rpe between 1 and 10),
+  notes       text,
+  created_at  timestamptz not null default now()
+);
+create index if not exists workout_logs_idx on workout_logs(client_id, started_at desc);
+
+-- ---------- Parrainage ----------
+create table if not exists referrals (
+  id                 uuid primary key default gen_random_uuid(),
+  referrer_client_id uuid not null references clients(id) on delete cascade,
+  referred_name      text not null,
+  referred_phone     text,
+  referred_client_id uuid references clients(id) on delete set null,
+  status             text not null default 'en_attente' check (status in ('en_attente','inscrit','recompense')),
+  reward_mad         numeric(10,2),
+  created_at         timestamptz not null default now()
+);
+
+-- ---------- RLS V3 ----------
+alter table foods             enable row level security;
+alter table meal_plans        enable row level security;
+alter table food_logs         enable row level security;
+alter table progress_photos   enable row level security;
+alter table memberships       enable row level security;
+alter table gym_checkins      enable row level security;
+alter table online_payments   enable row level security;
+alter table whatsapp_messages enable row level security;
+alter table challenges        enable row level security;
+alter table challenge_entries enable row level security;
+alter table badges            enable row level security;
+alter table group_classes     enable row level security;
+alter table class_bookings    enable row level security;
+alter table exercises         enable row level security;
+alter table workout_logs      enable row level security;
+alter table referrals         enable row level security;
+
+-- Bibliothèques lisibles par tous les comptes connectés, gérées par le staff
+drop policy if exists "foods read" on foods;
+create policy "foods read" on foods for select using (auth.uid() is not null);
+drop policy if exists "foods write" on foods;
+create policy "foods write" on foods for all using (public.is_staff()) with check (public.is_staff());
+
+drop policy if exists "exercises read" on exercises;
+create policy "exercises read" on exercises for select using (auth.uid() is not null);
+drop policy if exists "exercises write" on exercises;
+create policy "exercises write" on exercises for all using (public.is_staff()) with check (public.is_staff());
+
+drop policy if exists "classes read" on group_classes;
+create policy "classes read" on group_classes for select using (auth.uid() is not null);
+drop policy if exists "classes write" on group_classes;
+create policy "classes write" on group_classes for all using (public.is_staff()) with check (public.is_staff());
+
+drop policy if exists "challenges read" on challenges;
+create policy "challenges read" on challenges for select using (auth.uid() is not null);
+drop policy if exists "challenges write" on challenges;
+create policy "challenges write" on challenges for all using (public.is_staff()) with check (public.is_staff());
+
+-- Classement : tous les adhérents voient les scores (prénom affiché côté app)
+drop policy if exists "entries read" on challenge_entries;
+create policy "entries read" on challenge_entries for select using (auth.uid() is not null);
+drop policy if exists "entries staff" on challenge_entries;
+create policy "entries staff" on challenge_entries for all using (public.is_staff()) with check (public.is_staff());
+drop policy if exists "entries self" on challenge_entries;
+create policy "entries self" on challenge_entries for all
+  using (exists (select 1 from clients c where c.id = client_id and c.user_id = auth.uid()))
+  with check (exists (select 1 from clients c where c.id = client_id and c.user_id = auth.uid()));
+
+-- Données propres à un client : lecture coach/admin/client, écriture coach/admin
+do $$
+declare t text;
+begin
+  foreach t in array array['meal_plans','progress_photos','memberships','gym_checkins','online_payments','badges','workout_logs','food_logs','class_bookings'] loop
+    execute format('drop policy if exists "%1$s read" on %1$s', t);
+    execute format('create policy "%1$s read" on %1$s for select using (client_id is null or public.can_see_client(client_id))', t);
+    execute format('drop policy if exists "%1$s staff" on %1$s', t);
+    execute format('create policy "%1$s staff" on %1$s for all using (client_id is null and public.is_staff() or public.can_manage_client(client_id)) with check (client_id is null and public.is_staff() or public.can_manage_client(client_id))', t);
+  end loop;
+end $$;
+
+-- Ce que l'adhérent peut écrire lui-même
+do $$
+declare t text;
+begin
+  foreach t in array array['food_logs','workout_logs','progress_photos','class_bookings','referrals'] loop
+    execute format('drop policy if exists "%1$s self" on %1$s', t);
+  end loop;
+end $$;
+create policy "food_logs self" on food_logs for all
+  using (exists (select 1 from clients c where c.id = client_id and c.user_id = auth.uid()))
+  with check (exists (select 1 from clients c where c.id = client_id and c.user_id = auth.uid()));
+create policy "workout_logs self" on workout_logs for all
+  using (exists (select 1 from clients c where c.id = client_id and c.user_id = auth.uid()))
+  with check (exists (select 1 from clients c where c.id = client_id and c.user_id = auth.uid()));
+create policy "progress_photos self" on progress_photos for insert
+  with check (exists (select 1 from clients c where c.id = client_id and c.user_id = auth.uid()));
+create policy "class_bookings self" on class_bookings for all
+  using (exists (select 1 from clients c where c.id = client_id and c.user_id = auth.uid()))
+  with check (exists (select 1 from clients c where c.id = client_id and c.user_id = auth.uid()));
+create policy "referrals self" on referrals for insert
+  with check (status = 'en_attente' and exists (select 1 from clients c where c.id = referrer_client_id and c.user_id = auth.uid()));
+drop policy if exists "referrals read" on referrals;
+create policy "referrals read" on referrals for select using (public.can_see_client(referrer_client_id));
+drop policy if exists "referrals staff" on referrals;
+create policy "referrals staff" on referrals for all using (public.is_staff()) with check (public.is_staff());
+
+-- WhatsApp : staff uniquement
+drop policy if exists "whatsapp staff" on whatsapp_messages;
+create policy "whatsapp staff" on whatsapp_messages for all using (public.is_staff()) with check (public.is_staff());
+
+-- Photos dans le stockage (bucket privé)
+insert into storage.buckets (id, name, public) values ('photos', 'photos', false) on conflict do nothing;
+drop policy if exists "photos storage staff" on storage.objects;
+create policy "photos storage staff" on storage.objects for all
+  using (bucket_id = 'photos' and public.is_staff()) with check (bucket_id = 'photos' and public.is_staff());
+drop policy if exists "photos storage client" on storage.objects;
+create policy "photos storage client" on storage.objects for all
+  using (bucket_id = 'photos' and exists (select 1 from clients c where c.user_id = auth.uid() and storage.objects.name like c.id::text || '/%'))
+  with check (bucket_id = 'photos' and exists (select 1 from clients c where c.user_id = auth.uid() and storage.objects.name like c.id::text || '/%'));
+
+-- ---------- Ajustements V3 (accès en production) ----------
+-- Les adhérents voient le taux de remplissage des cours (pas de données personnelles dans cette table)
+drop policy if exists "class_bookings read all" on class_bookings;
+create policy "class_bookings read all" on class_bookings for select using (auth.uid() is not null);
+
+-- Les badges gagnés sont enregistrés depuis l'espace adhérent
+drop policy if exists "badges self" on badges;
+create policy "badges self" on badges for insert
+  with check (exists (select 1 from clients c where c.id = client_id and c.user_id = auth.uid()));
+
+-- Prénom + initiale des participants (classements) sans exposer les fiches clients
+create or replace function public.member_short_names(ids uuid[]) returns table (id uuid, short_name text)
+language sql stable security definer set search_path = public as $$
+  select c.id, split_part(c.full_name, ' ', 1) || coalesce(' ' || left(nullif(split_part(c.full_name, ' ', 2), ''), 1) || '.', '')
+  from clients c where c.id = any(ids) and auth.uid() is not null
+$$;
+
+alter table challenges add column if not exists announced_at timestamptz;
+
+-- Les adhérents peuvent supprimer les photos qu'ils ont eux-mêmes ajoutées
+drop policy if exists "progress_photos self delete" on progress_photos;
+create policy "progress_photos self delete" on progress_photos for delete
+  using (created_by = auth.uid() and exists (select 1 from clients c where c.id = client_id and c.user_id = auth.uid()));

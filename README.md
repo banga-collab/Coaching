@@ -9,6 +9,7 @@ CRM de coaching du Complexe Moov'Up Sports (Agadir) : clients, séances, progres
 | **1 · CRM essentiel** | Tableau de bord · Base clients · Fiches clients · Évaluations personnalisables · Séances · Objectifs & progression · Espace adhérent · Documents & rapports · Comptes et permissions |
 | **2 · Gestion** | Programmes · Tâches & check-ins · Messages & notifications · Factures, formules & paiements · Équipe · Analytique · Exports CSV |
 | **3 · Plateforme** | Assistant IA (Claude) · WhatsApp · Automatisations · Réservation en ligne · Marque blanche · Intégrations (agenda, import CSV, webhook) · Application installable (PWA) |
+| **4 · Fidélisation** | Nutrition (plats marocains, macros, journal, courses) · Photos avant/après · Abonnements & accès QR · Paiement en ligne (CMI / Stripe) · Rappels WhatsApp automatiques · Défis & badges · Cours collectifs · Vidéothèque · Suivi de séance en direct · Parrainage |
 
 ## Voir la démo (sans base de données)
 
@@ -16,7 +17,7 @@ CRM de coaching du Complexe Moov'Up Sports (Agadir) : clients, séances, progres
 npm run dev:demo
 ```
 
-Ouvre http://localhost:3000 : des clients, séances, factures, messages… fictifs sont chargés. Le bouton en bas du menu bascule entre la vue coach et la vue adhérent. Les modifications ne sont pas sauvegardées.
+Ouvre http://localhost:3000 : des clients, séances, factures, messages… fictifs sont chargés. Connecte-toi avec un compte de démonstration (affichés sur la page de connexion) : admin@moovup.ma / moovup2026, sara@moovup.ma / coach2026 ou karim@example.com / adherent2026. Les modifications ne sont pas sauvegardées.
 
 ## Mise en route (une seule fois)
 

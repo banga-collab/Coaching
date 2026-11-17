@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Grid2x2, LogOut } from "lucide-react";
 import type { Role } from "@/lib/types";
-import { STAFF_MOBILE, navFor } from "@/lib/nav";
+import { CLIENT_MOBILE, STAFF_MOBILE, navFor } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./ui";
 import { signOut } from "@/app/(auth)/actions";
@@ -17,7 +17,7 @@ export function Sidebar({ name, role, logoUrl, badges = {} }: { name: string; ro
   const groups = navFor(role);
   const all = groups.flatMap((g) => g.items);
   const active = (href: string) => (href === "/" || href === "/moi" ? path === href : path === href || path.startsWith(href + "/"));
-  const mobile = role === "client" ? all : all.filter((i) => STAFF_MOBILE.includes(i.href));
+  const mobile = all.filter((i) => (role === "client" ? CLIENT_MOBILE : STAFF_MOBILE).includes(i.href));
   const logo = logoUrl || "/logo.png";
 
   return (
@@ -84,11 +84,11 @@ export function Sidebar({ name, role, logoUrl, badges = {} }: { name: string; ro
         {mobile.map((it) => (
           <Link key={it.href} href={it.href} className={cn("relative flex min-w-14 flex-col items-center gap-0.5 rounded-xl px-2 py-1.5 text-[10.5px] font-semibold", active(it.href) ? "text-brand-500" : "text-slate-400")}>
             <it.icon className="size-5" />
-            {it.label.replace("Tableau de bord", "Accueil").replace("Ma progression", "Progrès")}
+            {it.label.replace("Tableau de bord", "Accueil").replace("Ma progression", "Progrès").replace("Ma carte & abonnement", "Ma carte").replace("Cours collectifs", "Cours")}
             {!!badges[it.href] && <span className="absolute right-2 top-0.5 size-2 rounded-full bg-accent-500" />}
           </Link>
         ))}
-        {role !== "client" && (
+        {(
           <Link href="/plus" className={cn("flex min-w-14 flex-col items-center gap-0.5 rounded-xl px-2 py-1.5 text-[10.5px] font-semibold", path === "/plus" ? "text-brand-500" : "text-slate-400")}>
             <Grid2x2 className="size-5" />
             Plus

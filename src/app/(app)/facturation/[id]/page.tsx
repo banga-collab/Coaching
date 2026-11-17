@@ -1,13 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Ban, CheckCircle2, MessageCircle, RotateCcw, Send, Wallet } from "lucide-react";
+import { Ban, CheckCircle2, CreditCard, Lock, MessageCircle, RotateCcw, Send, Wallet } from "lucide-react";
 import { getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getSettings } from "@/lib/settings";
-import type { Client, Invoice } from "@/lib/types";
-import { cn, fmtDate } from "@/lib/utils";
+import type { Client, Invoice, OnlinePayment } from "@/lib/types";
+import { canSimulate, PAYMENT_STATUS, paymentMode, PROVIDER_LABEL } from "@/lib/payments";
+import { CardMarks } from "@/components/payments/marks";
+import { cn, fmtDate, fmtTime } from "@/lib/utils";
 import { waLink, WA_TEMPLATES } from "@/lib/whatsapp";
-import { Badge, Card, CardHeader, Field, Input, Select } from "@/components/ui";
+import { Badge, Card, CardHeader, Field, Input, LinkButton, Select } from "@/components/ui";
 import { BackLink } from "@/components/back-link";
 import { PrintButton } from "@/components/print-button";
 import { SubmitButton } from "@/components/submit-button";
@@ -35,6 +37,12 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   const first = client?.full_name.split(" ")[0] ?? "";
   const reminder = client && (state === "envoyee" || state === "retard") ? waLink(client.phone, WA_TEMPLATES.invoice(first, inv.number, mad(inv.amount_mad))) : null;
   const logo = settings.logo_url || "/logo.png";
+  // Paiement en ligne
+  const { data: opData } = await supabase.from("online_payments").select("*").eq("invoice_id", inv.id).order("created_at", { ascending: false });
+  const onlinePayments = (opData ?? []) as OnlinePayment[];
+  const lastOnline = onlinePayments[0] ?? null;
+  const { mode: payMode } = paymentMode(settings);
+  const canPayOnline = inv.status === "envoyee" && payMode !== "off" && (payMode !== "demo" || canSimulate(me.role));
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -50,6 +58,25 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
         </div>
         <PrintButton />
       </div>
+
+      {!isStaff && canPayOnline && (
+        <Card className="no-print relative mx-auto mb-5 w-full max-w-[210mm] overflow-hidden">
+          <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-accent-500 to-brand-500" />
+          <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
+            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent-50 text-accent-600">
+              <CreditCard className="size-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-display text-[15px] font-bold text-ink">Règle ta facture en ligne · {mad(inv.amount_mad)}</p>
+              <p className="mt-0.5 text-sm text-muted">Paiement par carte bancaire, sécurisé et immédiat.</p>
+              <CardMarks provider={payMode} className="mt-2" />
+            </div>
+            <LinkButton href={`/paiement/${inv.id}`} className="h-12 w-full sm:h-11 sm:w-auto">
+              <Lock className="size-4" /> Payer en ligne
+            </LinkButton>
+          </div>
+        </Card>
+      )}
 
       <div className={cn("grid gap-5", isStaff && "lg:grid-cols-[1fr_300px] lg:items-start")}>
         {/* ---------- Facture A4 ---------- */}
@@ -166,6 +193,32 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
         {/* ---------- Actions (staff) ---------- */}
         {isStaff && (
           <aside className="no-print space-y-4 lg:sticky lg:top-6">
+            {(canPayOnline || lastOnline) && (
+              <Card>
+                <CardHeader title="Paiement en ligne" subtitle={canPayOnline ? "Carte bancaire (Stripe / CMI)" : "Historique"} icon={<CreditCard className="size-4" />} />
+                <div className="space-y-3 px-5 pb-5">
+                  {lastOnline && (
+                    <div className="flex items-center justify-between gap-2 rounded-xl bg-canvas/70 px-3 py-2.5 text-xs">
+                      <span className="min-w-0">
+                        <span className="block font-semibold text-ink">{PROVIDER_LABEL[lastOnline.provider]} · {mad(lastOnline.amount_mad)}</span>
+                        <span className="text-muted">
+                          {fmtDate(lastOnline.paid_at ?? lastOnline.created_at, { day: "numeric", month: "short" })} à {fmtTime(lastOnline.paid_at ?? lastOnline.created_at)}
+                        </span>
+                      </span>
+                      <Badge tone={PAYMENT_STATUS[lastOnline.status].tone}>{PAYMENT_STATUS[lastOnline.status].label}</Badge>
+                    </div>
+                  )}
+                  {canPayOnline && (
+                    <>
+                      <LinkButton href={`/paiement/${inv.id}`} className="w-full">
+                        <Lock className="size-4" /> Payer en ligne
+                      </LinkButton>
+                      <p className="text-xs text-muted">Le client peut aussi payer depuis son espace membre (onglet Factures).</p>
+                    </>
+                  )}
+                </div>
+              </Card>
+            )}
             {(inv.status === "envoyee" || inv.status === "brouillon") && (
               <Card>
                 <CardHeader title="Encaisser" subtitle={mad(inv.amount_mad)} icon={<Wallet className="size-4" />} />

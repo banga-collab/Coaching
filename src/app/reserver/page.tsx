@@ -7,7 +7,8 @@ import { WhatsAppButton } from "@/components/modules/whatsapp-button";
 import { buildDays } from "@/components/platform/slots";
 import { BookingForm } from "./booking-form";
 
-export default async function ReserverPage() {
+export default async function ReserverPage({ searchParams }: { searchParams: Promise<{ ref?: string }> }) {
+  const ref = ((await searchParams).ref ?? "").replace(/[^A-Za-z0-9]/g, "").slice(0, 20);
   const s = await getSettings();
 
   if (!s.booking_enabled || !s.booking_types.length) {
@@ -47,5 +48,5 @@ export default async function ReserverPage() {
   }
   const days = buildDays(s.booking_hours, busy);
 
-  return <BookingForm types={s.booking_types} days={days} brand={s.brand_name} whatsapp={s.whatsapp} slot={s.booking_hours.slot} />;
+  return <BookingForm types={s.booking_types} days={days} brand={s.brand_name} whatsapp={s.whatsapp} slot={s.booking_hours.slot} referral={ref || undefined} />;
 }
