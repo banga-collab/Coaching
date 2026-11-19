@@ -1,17 +1,19 @@
 import Link from "next/link";
-import { CalendarRange, ChevronRight, Dumbbell, Layers, Plus, Search, Target, Users } from "lucide-react";
+import { CalendarRange, ChevronRight, Dumbbell, Layers, Plus, Target, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireStaff } from "@/lib/auth";
 import type { ClientProgram, Program } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { normName } from "@/lib/video";
 import { Badge, Card, Empty, LinkButton, PageHeader } from "@/components/ui";
 import { levelTone } from "@/components/coaching/program-constants";
+import { ListToolbar } from "@/components/list-toolbar";
 
 export const metadata = { title: "Programmes" };
 
-export default async function ProgramsPage({ searchParams }: { searchParams: Promise<{ q?: string; objectif?: string }> }) {
+export default async function ProgramsPage({ searchParams }: { searchParams: Promise<{ q?: string; objectif?: string; niveau?: string }> }) {
   await requireStaff();
-  const { q = "", objectif = "" } = await searchParams;
+  const { q = "", objectif = "", niveau = "" } = await searchParams;
   const supabase = await createClient();
 
   const [{ data: pData }, { data: cpData }] = await Promise.all([
@@ -20,16 +22,33 @@ export default async function ProgramsPage({ searchParams }: { searchParams: Pro
   ]);
   const all = (pData ?? []) as Program[];
   const assigned = (cpData ?? []) as Pick<ClientProgram, "program_id" | "client_id" | "status">[];
-  const clientsOf = (id: string) => new Set(assigned.filter((a) => a.program_id === id).map((a) => a.client_id)).size;
+  const clientsByProgram = new Map<string, Set<string>>();
+  for (const a of assigned) {
+    const set = clientsByProgram.get(a.program_id) ?? new Set<string>();
+    set.add(a.client_id);
+    clientsByProgram.set(a.program_id, set);
+  }
+  const clientsOf = (id: string) => clientsByProgram.get(id)?.size ?? 0;
 
-  const goals = [...new Set(all.map((p) => p.goal).filter((g): g is string => !!g))].sort((a, b) => a.localeCompare(b, "fr"));
-  const needle = q.trim().toLowerCase();
-  const programs = all.filter(
-    (p) =>
-      (!objectif || p.goal === objectif) &&
-      (!needle || [p.name, p.description, p.goal].some((v) => v?.toLowerCase().includes(needle))),
-  );
-  const filtered = !!(q || objectif);
+  // Recherche (insensible à la casse et aux accents) puis filtres
+  const needle = normName(q);
+  const searched = needle ? all.filter((p) => normName([p.name, p.description, p.goal, p.level].filter(Boolean).join(" ")).includes(needle)) : all;
+  const countBy = (list: Program[], key: "goal" | "level") => {
+    const m = new Map<string, number>();
+    for (const p of list) if (p[key]) m.set(p[key]!, (m.get(p[key]!) ?? 0) + 1);
+    return m;
+  };
+  const goalCount = countBy(niveau ? searched.filter((p) => p.level === niveau) : searched, "goal");
+  const levelCount = countBy(objectif ? searched.filter((p) => p.goal === objectif) : searched, "level");
+  const sortFr = (a: string, b: string) => a.localeCompare(b, "fr");
+  const goals = [...new Set(all.map((p) => p.goal).filter((g): g is string => !!g))].sort(sortFr);
+  const levels = [...new Set(all.map((p) => p.level).filter((l): l is string => !!l))].sort(sortFr);
+  const filters = [
+    { param: "objectif", label: "Objectif", options: goals.map((g) => ({ value: g, label: g, count: goalCount.get(g) ?? 0 })) },
+    ...(levels.length ? [{ param: "niveau", label: "Niveau", options: levels.map((l) => ({ value: l, label: l, count: levelCount.get(l) ?? 0 })) }] : []),
+  ];
+  const programs = searched.filter((p) => (!objectif || p.goal === objectif) && (!niveau || p.level === niveau));
+  const filtered = !!(q || objectif || niveau);
 
   return (
     <>
@@ -43,34 +62,7 @@ export default async function ProgramsPage({ searchParams }: { searchParams: Pro
         }
       />
 
-      <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="-mx-4 overflow-x-auto px-4 lg:mx-0 lg:px-0">
-          <div className="flex w-max gap-1 rounded-xl bg-white p-1 ring-1 ring-line">
-            {["", ...goals].map((g) => (
-              <Link
-                key={g || "all"}
-                href={{ pathname: "/programmes", query: { ...(q && { q }), ...(g && { objectif: g }) } }}
-                className={cn(
-                  "whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-semibold transition",
-                  objectif === g ? "bg-brand-500 text-white shadow-sm" : "text-muted hover:text-ink",
-                )}
-              >
-                {g || "Tous"}
-              </Link>
-            ))}
-          </div>
-        </div>
-        <form className="relative lg:w-72">
-          {objectif && <input type="hidden" name="objectif" value={objectif} />}
-          <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-          <input
-            name="q"
-            defaultValue={q}
-            placeholder="Rechercher un programme…"
-            className="h-10 w-full rounded-xl border border-line bg-white pl-10 pr-3 text-sm focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-50"
-          />
-        </form>
-      </div>
+      <ListToolbar placeholder="Nom, description, objectif…" filters={filters} exportKind="programmes" />
 
       {programs.length === 0 ? (
         <Card>
@@ -106,7 +98,7 @@ export default async function ProgramsPage({ searchParams }: { searchParams: Pro
               >
                 <Card className="relative flex h-full flex-col overflow-hidden transition duration-200 group-hover:-translate-y-0.5 group-hover:border-brand-200 group-hover:shadow-pop">
                   <div className="relative h-24 overflow-hidden bg-gradient-to-br from-brand-500 via-brand-600 to-brand-800 px-5 pt-4">
-                    <Dumbbell className="absolute -right-4 -bottom-6 size-28 rotate-[-20deg] text-white/10 transition duration-300 group-hover:rotate-[-10deg]" />
+                    <Dumbbell className="absolute -end-4 -bottom-6 size-28 rotate-[-20deg] text-white/10 transition duration-300 group-hover:rotate-[-10deg]" />
                     <div className="flex items-center gap-2">
                       {p.goal && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-0.5 text-xs font-semibold text-white ring-1 ring-inset ring-white/20">
@@ -116,7 +108,7 @@ export default async function ProgramsPage({ searchParams }: { searchParams: Pro
                     </div>
                     <p className="mt-3 font-display text-3xl font-extrabold leading-none text-white">
                       {p.weeks}
-                      <span className="ml-1 text-sm font-semibold text-white/70">sem.</span>
+                      <span className="ms-1 text-sm font-semibold text-white/70">sem.</span>
                     </p>
                   </div>
                   <div className="flex flex-1 flex-col p-5">
@@ -145,7 +137,7 @@ export default async function ProgramsPage({ searchParams }: { searchParams: Pro
                   </div>
                   <div className="flex items-center justify-between border-t border-line px-5 py-3 text-sm font-semibold text-brand-600">
                     Voir le programme
-                    <ChevronRight className="size-4 transition group-hover:translate-x-0.5" />
+                    <ChevronRight className="size-4 transition group-hover:translate-x-0.5 rtl:rotate-180 rtl:group-hover:-translate-x-0.5" />
                   </div>
                 </Card>
               </Link>

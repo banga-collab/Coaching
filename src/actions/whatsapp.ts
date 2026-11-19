@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getProfile } from "@/lib/auth";
+import { getProfile, isManager } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { sendWhatsApp } from "@/lib/whatsapp-api";
 import { isWaTemplate } from "@/components/whatsapp/templates";
@@ -12,7 +12,7 @@ export type WaSendState = { error?: string; ok?: number; status?: WhatsAppMessag
 /** Formulaire « Envoyer un message » de /whatsapp. */
 export async function sendWhatsAppAction(_: WaSendState, fd: FormData): Promise<WaSendState> {
   const me = await getProfile();
-  if (me.role === "client") return { error: "Accès refusé." };
+  if (!isManager(me.role)) return { error: "Accès refusé." };
   const clientId = String(fd.get("client_id") ?? "");
   const template = String(fd.get("template") ?? "manuel");
   const body = String(fd.get("body") ?? "").trim();

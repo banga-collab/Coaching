@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Assessment, AssessmentTemplate, Client } from "@/lib/types";
 import { fmtDate, num } from "@/lib/utils";
 import { Avatar, Badge, Card, CardHeader, Empty, Kpi, LinkButton, PageHeader } from "@/components/ui";
+import { BilanOverview } from "@/components/bilan/bilan-overview";
 
 export const metadata = { title: "Évaluations" };
 
@@ -53,6 +54,8 @@ export default async function EvaluationsPage() {
           </LinkButton>
         }
       />
+
+      <BilanOverview />
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-3 animate-fade-up">
         <Kpi label="Modèles" value={templates.length} icon={<ListChecks className="size-[18px]" />} />

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Badge, Challenge, ClassBooking, Goal, GymCheckin, Measurement, Referral, Session } from "./types";
+import type { Badge, Challenge, ClassBooking, Goal, GymCheckin, Measurement, Session } from "./types";
 import { challengeStatus, computeLeaderboard, loadScoreData } from "./challenges";
 import { dayKey, isoToAgadir } from "./utils";
 
@@ -22,7 +22,6 @@ export const BADGES: BadgeDef[] = [
   { code: "record_squat", label: "Record squat", description: "Bats ton meilleur squat lors d'une mesure.", icon: "Zap", color: "#e8782a" },
   { code: "objectif_atteint", label: "Objectif atteint", description: "Atteins un objectif fixé avec ton coach.", icon: "Target", color: "#22c55e" },
   { code: "defi_gagne", label: "Défi gagné", description: "Termine 1er d'un défi du mois.", icon: "Trophy", color: "#f59e0b" },
-  { code: "parrain", label: "Parrain", description: "Parraine un ami qui s'inscrit (parrainage récompensé).", icon: "HeartHandshake", color: "#ec4899" },
   { code: "leve_tot", label: "Lève-tôt", description: "Fais 5 passages à la salle avant 8 h du matin.", icon: "Sunrise", color: "#f97316" },
 ];
 
@@ -50,12 +49,11 @@ function hasConsecutiveWeeks(weeks: Set<string>, n: number) {
 
 /** Calcule les badges mérités par un client (codes). */
 export async function computeBadges(supabase: SupabaseClient, clientId: string): Promise<string[]> {
-  const [{ data: s }, { data: g }, { data: m }, { data: go }, { data: r }, { data: b }, { data: ch }] = await Promise.all([
+  const [{ data: s }, { data: g }, { data: m }, { data: go }, { data: b }, { data: ch }] = await Promise.all([
     supabase.from("sessions").select("starts_at, status").eq("client_id", clientId).eq("status", "realisee"),
     supabase.from("gym_checkins").select("checked_at").eq("client_id", clientId),
     supabase.from("measurements").select("measured_on, weight_kg, squat_kg").eq("client_id", clientId).order("measured_on"),
     supabase.from("goals").select("status").eq("client_id", clientId).eq("status", "atteint"),
-    supabase.from("referrals").select("status").eq("referrer_client_id", clientId).eq("status", "recompense"),
     supabase.from("class_bookings").select("status, created_at, class_id").eq("client_id", clientId).eq("status", "present"),
     supabase.from("challenges").select("*"),
   ]);
@@ -94,7 +92,6 @@ export async function computeBadges(supabase: SupabaseClient, clientId: string):
   }
 
   if (((go ?? []) as Pick<Goal, "status">[]).length) earned.add("objectif_atteint");
-  if (((r ?? []) as Pick<Referral, "status">[]).length) earned.add("parrain");
 
   // Lève-tôt : 5 passages avant 8 h (heure d'Agadir)
   if (checkins.filter((x) => isoToAgadir(x.checked_at).time < "08:00").length >= 5) earned.add("leve_tot");

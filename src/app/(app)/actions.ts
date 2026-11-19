@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile } from "@/lib/auth";
-import { PAIN_ZONES, agadirToIso, parseNum, str } from "@/lib/utils";
+import { checkActiveCoach, getProfile, isActiveStaff, isManager, loadManagedClient } from "@/lib/auth";
+import { PAIN_ZONES, parseNum, str } from "@/lib/utils";
 import type { FormState } from "@/components/action-form";
 
 const int = (v: FormDataEntryValue | null) => {
@@ -17,6 +17,19 @@ const scale = (v: FormDataEntryValue | null) => {
 };
 function fail(msg: string): FormState {
   return { error: msg };
+}
+
+/**
+ * Droit d'écrire dans le dossier d'un client (mesures, bilans santé) :
+ * l'adhérent lui-même pour son propre dossier, sinon son coach référent ou un manager.
+ */
+async function canWriteClient(supabase: Awaited<ReturnType<typeof createClient>>, clientId: string) {
+  const me = await getProfile();
+  if (me.role === "client") {
+    const { data } = await supabase.from("clients").select("id").eq("id", clientId).eq("user_id", me.id).maybeSingle();
+    return !!data;
+  }
+  return !!(await loadManagedClient(supabase, me, clientId));
 }
 
 /* ================= Clients ================= */
@@ -36,38 +49,68 @@ function clientFields(fd: FormData) {
   };
 }
 
+/**
+ * Création d'un dossier client.
+ * - Admin / head coach : choisissent le coach référent (parmi le personnel actif).
+ * - Coach : le client lui est toujours rattaché.
+ */
 export async function createClientAction(_: FormState, fd: FormData): Promise<FormState> {
   const me = await getProfile();
-  if (me.role === "client") return fail("Accès refusé.");
+  if (!isActiveStaff(me)) return fail("Accès refusé.");
   const f = clientFields(fd);
   if (!f.full_name) return fail("Le nom est obligatoire.");
-  const coach_id = me.role === "admin" ? str(fd.get("coach_id")) ?? me.id : me.id;
+  const coach_id = isManager(me.role) ? str(fd.get("coach_id")) ?? me.id : me.id;
   const supabase = await createClient();
+  const bad = await checkActiveCoach(supabase, coach_id);
+  if (bad) return fail(bad);
   const { data, error } = await supabase.from("clients").insert({ ...f, coach_id }).select("id").single();
   if (error) return fail(error.code === "23505" ? "Ce compte est déjà lié à un autre client." : error.message);
   revalidatePath("/", "layout");
   redirect(`/clients/${data.id}`);
 }
 
+/** Modification : coach référent du client ou manager. Seul un manager change le coach référent. */
 export async function updateClientAction(_: FormState, fd: FormData): Promise<FormState> {
   const me = await getProfile();
-  const id = String(fd.get("id"));
+  const id = String(fd.get("id") ?? "");
   const f = clientFields(fd);
   if (!f.full_name) return fail("Le nom est obligatoire.");
-  const patch: Record<string, unknown> = { ...f };
-  if (me.role === "admin" && str(fd.get("coach_id"))) patch.coach_id = str(fd.get("coach_id"));
   const supabase = await createClient();
+  const current = await loadManagedClient(supabase, me, id);
+  if (!current) return fail("Tu ne peux modifier que les dossiers de tes clients.");
+  const patch: Record<string, unknown> = { ...f };
+  const wanted = str(fd.get("coach_id"));
+  if (isManager(me.role) && wanted && wanted !== current.coach_id) {
+    const bad = await checkActiveCoach(supabase, wanted);
+    if (bad) return fail(bad);
+    patch.coach_id = wanted;
+  }
   const { error } = await supabase.from("clients").update(patch).eq("id", id);
   if (error) return fail(error.message);
   revalidatePath("/", "layout");
   redirect(`/clients/${id}?tab=infos`);
 }
 
-export async function deleteClientAction(fd: FormData) {
+/**
+ * Archivage d'un client (statut « terminé ») : tout l'historique est conservé
+ * (séances, mesures, bilans…). Aucune suppression définitive depuis l'application.
+ * Autorisé au coach référent et aux managers (admin / head coach).
+ */
+export async function archiveClientAction(fd: FormData) {
+  const me = await getProfile();
+  const id = String(fd.get("id") ?? "");
   const supabase = await createClient();
-  await supabase.from("clients").delete().eq("id", String(fd.get("id")));
+  const client = await loadManagedClient(supabase, me, id);
+  if (!client) redirect(id ? `/clients/${id}` : "/clients");
+  const { error } = await supabase.from("clients").update({ status: "termine" }).eq("id", client.id);
+  if (error) throw new Error(`Archivage impossible : ${error.message}`);
   revalidatePath("/", "layout");
-  redirect("/clients");
+  redirect(`/clients/${client.id}`);
+}
+
+/** Ancien nom conservé pour la fiche client : archive, ne supprime plus. */
+export async function deleteClientAction(fd: FormData) {
+  return archiveClientAction(fd);
 }
 
 /* ================= Mesures ================= */
@@ -92,6 +135,7 @@ export async function addMeasurementAction(_: FormState, fd: FormData): Promise<
   const filled = Object.entries(row).filter(([k, v]) => !["client_id", "measured_on", "notes"].includes(k) && v !== null);
   if (!filled.length) return fail("Renseigne au moins une mesure.");
   const supabase = await createClient();
+  if (!(await canWriteClient(supabase, client_id))) return fail("Seuls le coach du client ou un manager peuvent ajouter des mesures.");
   const { error } = await supabase.from("measurements").insert(row);
   if (error) return fail(error.message);
   revalidatePath(`/clients/${client_id}`);
@@ -101,7 +145,9 @@ export async function addMeasurementAction(_: FormState, fd: FormData): Promise<
 export async function deleteMeasurementAction(fd: FormData) {
   const supabase = await createClient();
   const client_id = String(fd.get("client_id"));
-  await supabase.from("measurements").delete().eq("id", String(fd.get("id")));
+  const me = await getProfile();
+  if (me.role === "client" || !(await loadManagedClient(supabase, me, client_id))) throw new Error("Seuls le coach du client ou un manager peuvent supprimer une mesure.");
+  await supabase.from("measurements").delete().eq("id", String(fd.get("id"))).eq("client_id", client_id);
   revalidatePath(`/clients/${client_id}`);
 }
 
@@ -136,6 +182,7 @@ export async function addHealthCheckAction(_: FormState, fd: FormData): Promise<
     consent,
   };
   const supabase = await createClient();
+  if (!(await canWriteClient(supabase, client_id))) return fail("Tu ne peux pas ajouter de bilan de santé à ce dossier.");
   const { error } = await supabase.from("health_checks").insert(row);
   if (error) return fail(error.message);
 
@@ -156,99 +203,7 @@ export async function addHealthCheckAction(_: FormState, fd: FormData): Promise<
   redirect(`/clients/${client_id}?tab=sante`);
 }
 
-/* ================= Séances ================= */
-function exercisesFrom(fd: FormData) {
-  const names = fd.getAll("ex_name").map(String);
-  const sets = fd.getAll("ex_sets");
-  const reps = fd.getAll("ex_reps").map(String);
-  const loads = fd.getAll("ex_load");
-  const rpes = fd.getAll("ex_rpe");
-  return names
-    .map((name, i) => ({
-      position: i,
-      name: name.trim(),
-      sets: int(sets[i] ?? null),
-      reps: reps[i]?.trim() || null,
-      load_kg: parseNum(loads[i] ?? null),
-      rpe: scale(rpes[i] ?? null),
-    }))
-    .filter((e) => e.name);
-}
-
-/** Date + heure saisies à Agadir (UTC+1) → ISO */
-function agadirIso(date: string, time: string) {
-  return agadirToIso(date, time);
-}
-
-export async function saveSessionAction(_: FormState, fd: FormData): Promise<FormState> {
-  const me = await getProfile();
-  if (me.role === "client") return fail("Accès refusé.");
-  const id = str(fd.get("id"));
-  const client_id = str(fd.get("client_id"));
-  const date = str(fd.get("date"));
-  if (!client_id) return fail("Choisis un client.");
-  if (!date) return fail("Choisis une date.");
-  const supabase = await createClient();
-
-  const { data: client } = await supabase.from("clients").select("coach_id").eq("id", client_id).single();
-  if (!client) return fail("Client introuvable.");
-
-  const row = {
-    client_id,
-    coach_id: client.coach_id as string,
-    starts_at: agadirIso(date, String(fd.get("time") ?? "")),
-    duration_min: int(fd.get("duration_min")) ?? 60,
-    type: str(fd.get("type")) ?? "Séance",
-    status: (str(fd.get("status")) ?? "planifiee") as "planifiee" | "realisee" | "absent" | "annulee",
-    rpe: scale(fd.get("rpe")),
-    notes: str(fd.get("notes")),
-  };
-
-  let sessionId = id;
-  if (id) {
-    const { error } = await supabase.from("sessions").update(row).eq("id", id);
-    if (error) return fail(error.message);
-    await supabase.from("session_exercises").delete().eq("session_id", id);
-  } else {
-    const { data, error } = await supabase.from("sessions").insert(row).select("id").single();
-    if (error) return fail(error.message);
-    sessionId = data.id;
-  }
-  const ex = exercisesFrom(fd);
-  if (ex.length) {
-    const { error } = await supabase.from("session_exercises").insert(ex.map((e) => ({ ...e, session_id: sessionId })));
-    if (error) return fail(error.message);
-  }
-  revalidatePath("/", "layout");
-  redirect(`/seances/${sessionId}`);
-}
-
-export async function setSessionStatusAction(fd: FormData) {
-  const supabase = await createClient();
-  const id = String(fd.get("id"));
-  await supabase.from("sessions").update({ status: String(fd.get("status")) }).eq("id", id);
-  revalidatePath("/", "layout");
-}
-
-export async function deleteSessionAction(fd: FormData) {
-  const supabase = await createClient();
-  await supabase.from("sessions").delete().eq("id", String(fd.get("id")));
-  revalidatePath("/", "layout");
-  redirect("/seances");
-}
-
-/* ================= Équipe ================= */
-export async function setRoleAction(fd: FormData) {
-  const me = await getProfile();
-  if (me.role !== "admin") return;
-  const id = String(fd.get("id"));
-  const role = String(fd.get("role"));
-  if (id === me.id || !["admin", "coach", "client"].includes(role)) return;
-  const supabase = await createClient();
-  await supabase.from("profiles").update({ role }).eq("id", id);
-  revalidatePath("/equipe");
-}
-
+/* ================= Profil ================= */
 export async function updateMyNameAction(fd: FormData) {
   const me = await getProfile();
   const supabase = await createClient();

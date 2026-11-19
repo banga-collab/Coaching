@@ -281,7 +281,6 @@ export function seedExtra(base: DB, uid: () => string): DB {
     { t: "Relancer Omar (en pause depuis 3 semaines)", c: 4, due: -1, p: "normale", src: "auto:inactive_client" },
     { t: "Bilan mensuel à faire : Mehdi Alaoui", c: 6, due: 1, p: "normale", src: "auto:health_check_due" },
     { t: "Commander des kettlebells 16 kg", c: null, due: 5, p: "basse", src: "manuel" },
-    { t: "Facture en retard : Imane Chraibi", c: 5, due: -2, p: "haute", src: "auto:invoice_overdue" },
     { t: "Envoyer le rapport mensuel à Salma", c: 1, due: -3, p: "normale", src: "manuel", done: true },
   ].map((x, i) => ({
     id: uid(),
@@ -324,7 +323,7 @@ export function seedExtra(base: DB, uid: () => string): DB {
   const notifications = [
     { u: ADMIN, t: "Nouveau message de Nadia Ouhammou", b: "J'ai encore mal au bas du dos ce matin…", l: `/messages?client=${C(3).id}`, k: "message", r: false, d: 0 },
     { u: ADMIN, t: "Nouvelle demande de réservation", b: "Hamza Berrada – Séance découverte", l: "/reservations", k: "reservation", r: false, d: 0 },
-    { u: ADMIN, t: "Facture payée", b: "Salma Bennani – 1 200 MAD", l: "/facturation", k: "paiement", r: false, d: -1 },
+    { u: ADMIN, t: "Séance réalisée", b: "Salma Bennani – Séance privée", l: `/clients/${C(1).id}?tab=seances`, k: "info", r: false, d: -1 },
     { u: ADMIN, t: "Alerte santé : tension élevée", b: "Nadia Ouhammou – 14/9", l: `/clients/${C(3).id}?tab=sante`, k: "alerte", r: true, d: -2 },
     { u: ADMIN, t: "Objectif atteint 🎉", b: "Salma Bennani – Masse grasse sous 22 %", l: `/clients/${C(1).id}?tab=objectifs`, k: "info", r: true, d: -4 },
     { u: CLIENT_USER, t: "Nouveau message de ton coach", b: "Oui, 30-40 min tranquille…", l: "/moi/messages", k: "message", r: false, d: -3 },
@@ -386,7 +385,6 @@ export function seedExtra(base: DB, uid: () => string): DB {
     { id: "checkin_reminder", enabled: true, params: { days: 7 }, last_run: ts(0, 7), last_count: 2 },
     { id: "health_check_due", enabled: true, params: { days: 30 }, last_run: ts(0, 7), last_count: 1 },
     { id: "absence_followup", enabled: true, params: { count: 2 }, last_run: ts(0, 7), last_count: 0 },
-    { id: "invoice_overdue", enabled: true, params: { days: 0 }, last_run: ts(0, 7), last_count: 2 },
     { id: "goal_reached", enabled: true, params: {}, last_run: ts(0, 7), last_count: 0 },
     { id: "inactive_client", enabled: false, params: { days: 14 }, last_run: null, last_count: null },
   ];

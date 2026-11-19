@@ -3,6 +3,8 @@ import { Activity, Dumbbell, HeartPulse, Ruler, Scale, Stethoscope, Trash2 } fro
 import type { HealthCheck, Measurement, Session } from "@/lib/types";
 import { healthAlerts } from "@/lib/insights";
 import { SESSION_LABEL, cn, fmtDate, fmtTime, num, signed } from "@/lib/utils";
+import { BUSY_STATUSES, isForgotten, memberSessionLabel, plannedEnd, visibleToMember } from "@/lib/planning";
+import { fmtDh } from "@/lib/session-extras";
 import { Badge, Card, CardHeader, Empty, Kpi, LinkButton } from "./ui";
 import { ACCENT, BRAND, GRAY, TrendChart } from "./charts";
 import { deleteMeasurementAction } from "@/app/(app)/actions";
@@ -301,10 +303,20 @@ export function HealthView({ checks, heightCm, lastWeight, clientId, canEdit }: 
 }
 
 /* ======================= Séances ======================= */
-export function SessionsView({ sessions, clientId, canEdit }: { sessions: Session[]; clientId: string; canEdit: boolean }) {
+/**
+ * Séances d'un client. Côté staff (canEdit) : statut exact, prix indicatif par séance et « valeur » des séances réalisées
+ * (information seulement : aucun paiement, aucun solde). Côté adhérent : libellés simples, sans prix ;
+ * les séances refusées (en réaffectation interne) sont masquées et une séance passée jamais faite s'affiche « Non effectuée ».
+ */
+export function SessionsView({ sessions: all, clientId, canEdit }: { sessions: Session[]; clientId: string; canEdit: boolean }) {
   const now = Date.now();
-  const upcoming = sessions.filter((s) => new Date(s.starts_at).getTime() >= now && s.status === "planifiee").reverse();
+  const sessions = canEdit ? all : all.filter(visibleToMember);
+  // À venir : séances ouvertes dont la fin prévue n'est pas passée (une refusée reste visible côté staff, à réaffecter)
+  const upcoming = sessions.filter((s) => plannedEnd(s) >= now && [...BUSY_STATUSES, "refusee"].includes(s.status)).reverse();
   const past = sessions.filter((s) => !upcoming.includes(s));
+  const price = (s: Session) => (s.price_mad !== null && s.price_mad !== undefined ? Number(s.price_mad) : null);
+  const doneList = past.filter((s) => s.status === "realisee");
+  const value = doneList.reduce((t, s) => t + (price(s) ?? 0), 0);
   const done = past.filter((s) => s.status === "realisee").length;
   const counted = past.filter((s) => s.status === "realisee" || s.status === "absent").length;
   const rpes = past.filter((s) => s.rpe).map((s) => s.rpe!);
@@ -317,13 +329,22 @@ export function SessionsView({ sessions, clientId, canEdit }: { sessions: Sessio
           <span className="block text-[11px] font-semibold uppercase text-muted">{fmtDate(s.starts_at, { month: "short" })}</span>
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-semibold">{s.type}</span>
+          <span className="block truncate font-semibold">
+            {s.type}
+            {canEdit && price(s) !== null ? <span className="font-normal text-muted"> · {fmtDh(price(s)!)}</span> : null}
+          </span>
           <span className="block truncate text-xs text-muted">
             {fmtTime(s.starts_at)} · {s.duration_min} min{s.rpe ? ` · RPE ${s.rpe}` : ""}
             {s.notes ? ` · ${s.notes}` : ""}
           </span>
         </span>
-        <Badge tone={s.status === "realisee" ? "green" : s.status === "absent" ? "red" : s.status === "annulee" ? "gray" : "brand"}>{SESSION_LABEL[s.status]}</Badge>
+        {canEdit ? (
+          <Badge tone={isForgotten(s, now) ? "amber" : s.status === "realisee" ? "green" : s.status === "absent" || s.status === "refusee" ? "red" : s.status === "annulee" ? "gray" : s.status === "planifiee" || s.status === "reportee" ? "amber" : "brand"}>
+            {isForgotten(s, now) ? `${SESSION_LABEL[s.status]} · à clôturer` : SESSION_LABEL[s.status]}
+          </Badge>
+        ) : (
+          <Badge tone={memberTone(memberSessionLabel(s, now), s.status)}>{memberSessionLabel(s, now)}</Badge>
+        )}
       </>
     );
     return canEdit ? (
@@ -338,7 +359,7 @@ export function SessionsView({ sessions, clientId, canEdit }: { sessions: Sessio
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-3 gap-4">
-        <Kpi label="Séances réalisées" value={done} />
+        <Kpi label="Séances réalisées" value={done} delta={canEdit && value > 0 ? `valeur ${fmtDh(value)}` : undefined} />
         <Kpi tone="accent" label="Assiduité" value={counted ? `${Math.round((done / counted) * 100)}%` : "–"} />
         <Kpi label="RPE moyen" value={rpes.length ? num(rpes.reduce((a, b) => a + b, 0) / rpes.length) : "–"} />
       </div>
@@ -359,7 +380,11 @@ export function SessionsView({ sessions, clientId, canEdit }: { sessions: Sessio
         )}
       </Card>
       <Card className="overflow-hidden">
-        <CardHeader title="Historique" icon={<Dumbbell className="size-4" />} />
+        <CardHeader
+          title="Historique"
+          subtitle={canEdit && done ? `${done} séance${done > 1 ? "s" : ""} réalisée${done > 1 ? "s" : ""}${value > 0 ? ` · valeur ${fmtDh(value)} (prix indicatifs)` : ""}` : undefined}
+          icon={<Dumbbell className="size-4" />}
+        />
         {past.length ? (
           <div className="divide-y divide-line border-t border-line">
             {past.map((s) => (
@@ -372,4 +397,14 @@ export function SessionsView({ sessions, clientId, canEdit }: { sessions: Sessio
       </Card>
     </div>
   );
+}
+
+/** Couleur du badge côté adhérent */
+function memberTone(label: string, status: Session["status"]): "green" | "red" | "gray" | "amber" | "brand" {
+  if (label === "Non effectuée") return "gray";
+  if (status === "realisee") return "green";
+  if (status === "absent") return "red";
+  if (status === "annulee") return "gray";
+  if (status === "acceptee" || status === "en_cours") return "brand";
+  return "amber";
 }

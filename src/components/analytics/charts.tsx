@@ -1,8 +1,6 @@
 "use client";
 
 import {
-  Area,
-  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -41,27 +39,6 @@ function Tip({ active, payload, label, unit }: { active?: boolean; payload?: Tip
         </p>
       ))}
     </div>
-  );
-}
-
-/** Chiffre d'affaires mensuel (aire dégradée). */
-export function RevenueArea({ data, height = 260 }: { data: { label: string; value: number }[]; height?: number }) {
-  return (
-    <ResponsiveContainer width="100%" height={height}>
-      <AreaChart data={data} margin={{ top: 8, right: 8, left: -6, bottom: 0 }}>
-        <defs>
-          <linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={BRAND} stopOpacity={0.28} />
-            <stop offset="100%" stopColor={BRAND} stopOpacity={0.02} />
-          </linearGradient>
-        </defs>
-        <CartesianGrid stroke="#eef1f4" vertical={false} />
-        <XAxis dataKey="label" tickLine={false} axisLine={false} tick={AXIS} dy={6} />
-        <YAxis tickLine={false} axisLine={false} tick={AXIS} width={52} tickFormatter={(v: number) => (v >= 1000 ? `${nf.format(v / 1000)}k` : String(v))} />
-        <Tooltip content={<Tip unit="MAD" />} cursor={{ stroke: "#cbd5e1", strokeDasharray: "4 4" }} />
-        <Area type="monotone" dataKey="value" name="Encaissé" stroke={BRAND} strokeWidth={2.5} fill="url(#revFill)" dot={{ r: 3.5, strokeWidth: 2, fill: "#fff" }} activeDot={{ r: 5.5, strokeWidth: 0 }} animationDuration={700} />
-      </AreaChart>
-    </ResponsiveContainer>
   );
 }
 

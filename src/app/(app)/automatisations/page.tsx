@@ -6,11 +6,8 @@ import {
   Clock,
   FlaskConical,
   HeartPulse,
-  IdCard,
   ListChecks,
   MessageCircle,
-  MessageSquareWarning,
-  Receipt,
   Save,
   Trophy,
   UserX,
@@ -18,7 +15,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { requireStaff } from "@/lib/auth";
+import { requireManager } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { AUTOMATION_META, DEFAULT_PARAMS, WHATSAPP_RULES, withDefaults, type AutomationRule, type RuleId } from "@/lib/automations";
 import { whatsappMode } from "@/lib/whatsapp-api";
@@ -34,12 +31,9 @@ const ICONS: Record<RuleId, { icon: LucideIcon; bg: string }> = {
   checkin_reminder: { icon: Bell, bg: "bg-brand-50 text-brand-500" },
   health_check_due: { icon: HeartPulse, bg: "bg-rose-50 text-rose-500" },
   absence_followup: { icon: CalendarX2, bg: "bg-amber-50 text-amber-600" },
-  invoice_overdue: { icon: Receipt, bg: "bg-red-50 text-red-500" },
   goal_reached: { icon: Trophy, bg: "bg-emerald-50 text-emerald-600" },
   inactive_client: { icon: UserX, bg: "bg-accent-50 text-accent-600" },
-  membership_expiring: { icon: IdCard, bg: "bg-violet-50 text-violet-600" },
   wa_session_reminder: { icon: CalendarClock, bg: "bg-emerald-50 text-emerald-600" },
-  wa_invoice_overdue: { icon: MessageSquareWarning, bg: "bg-emerald-50 text-emerald-600" },
   wa_checkin_missing: { icon: MessageCircle, bg: "bg-emerald-50 text-emerald-600" },
 };
 
@@ -58,7 +52,6 @@ function RuleCard({ r, i }: { r: AutomationRule; i: number }) {
           <div className="flex flex-wrap items-center gap-2">
             <h3 className={cn("font-display text-[15px] font-bold", r.enabled ? "text-ink" : "text-slate-500")}>{meta.title}</h3>
             {r.enabled ? <Badge tone="green" dot>Active</Badge> : <Badge tone="gray">Désactivée</Badge>}
-            {isWa && r.id === "membership_expiring" && <Badge tone="brand">+ WhatsApp</Badge>}
           </div>
           <p className="mt-1.5 text-sm leading-relaxed text-muted">{meta.description(params)}</p>
         </div>
@@ -114,7 +107,7 @@ function RuleCard({ r, i }: { r: AutomationRule; i: number }) {
               <>
                 {fmtDate(r.last_run, { day: "numeric", month: "short" })} à {fmtTime(r.last_run)} ·{" "}
                 <b className={cn(r.last_count ? "text-accent-600" : "text-slate-500")}>
-                  {r.last_count ?? 0} {isWa && r.id !== "membership_expiring" ? `message${(r.last_count ?? 0) > 1 ? "s" : ""}` : `créée${(r.last_count ?? 0) > 1 ? "s" : ""}`}
+                  {r.last_count ?? 0} {isWa ? `message${(r.last_count ?? 0) > 1 ? "s" : ""}` : `créée${(r.last_count ?? 0) > 1 ? "s" : ""}`}
                 </b>
               </>
             ) : (
@@ -128,7 +121,8 @@ function RuleCard({ r, i }: { r: AutomationRule; i: number }) {
 }
 
 export default async function AutomationsPage() {
-  await requireStaff();
+  // Réservé aux managers (admin, head coach) : un coach ne gère pas les automatisations
+  await requireManager();
   const supabase = await createClient();
   const [{ data }, settings] = await Promise.all([supabase.from("automations").select("*"), getSettings()]);
   const rules = withDefaults((data ?? []) as AutomationRule[]);
@@ -156,7 +150,7 @@ export default async function AutomationsPage() {
               <Link href="/taches" className="font-semibold text-brand-600 hover:underline">
                 tâches
               </Link>{" "}
-              et notifications utiles : relances, bilans à prévoir, factures impayées… Rien n&apos;est créé en double : tant qu&apos;une tâche automatique reste
+              et notifications utiles : relances, bilans à prévoir, objectifs atteints… Rien n&apos;est créé en double : tant qu&apos;une tâche automatique reste
               ouverte pour un client, elle n&apos;est pas recréée.
             </p>
             <p className="mt-3 inline-flex items-center gap-1.5 text-xs text-muted">

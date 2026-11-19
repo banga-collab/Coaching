@@ -1,35 +1,5 @@
-import type { Invoice, InvoiceLine, Notification } from "@/lib/types";
+import type { Notification } from "@/lib/types";
 import { dayKey, fmtDate, fmtTime } from "@/lib/utils";
-
-const madFmt = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2 });
-/** "1 200 MAD" */
-export function mad(v: number | null | undefined) {
-  return `${madFmt.format(Number(v ?? 0))} MAD`;
-}
-
-export function linesTotal(lines: InvoiceLine[]) {
-  return lines.reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.unit_price) || 0), 0);
-}
-
-export function todayKey() {
-  return dayKey(new Date());
-}
-
-export type InvoiceState = Invoice["status"] | "retard";
-export function invoiceState(inv: Pick<Invoice, "status" | "due_on">, today = todayKey()): InvoiceState {
-  if (inv.status === "envoyee" && inv.due_on && inv.due_on < today) return "retard";
-  return inv.status;
-}
-
-export const INVOICE_STATE: Record<InvoiceState, { label: string; tone: "gray" | "brand" | "green" | "red" | "amber" }> = {
-  brouillon: { label: "Brouillon", tone: "gray" },
-  envoyee: { label: "Envoyée", tone: "brand" },
-  payee: { label: "Payée", tone: "green" },
-  annulee: { label: "Annulée", tone: "gray" },
-  retard: { label: "En retard", tone: "red" },
-};
-
-export const PAY_METHODS = ["Espèces", "Carte", "Virement", "Chèque"];
 
 /** "à l'instant", "il y a 5 min", "il y a 3 h", "hier", "il y a 4 j", sinon date */
 export function relTime(iso: string, now = Date.now()) {

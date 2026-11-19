@@ -1,0 +1,34 @@
+/*
+ * Mode tablette : classe « tablet » sur <html> (cookie « ui=tablet », bouton de l'en-tête).
+ * Grandes cibles tactiles sur toutes les pages + barre d'accès rapide (src/components/tablet/dock.tsx).
+ */
+.tablet-dock { display: none; }
+
+@media screen {
+  html.tablet { font-size: 17px; }
+
+  /* Cibles tactiles d'au moins 48 px */
+  html.tablet main button:not(.tablet-keep),
+  html.tablet main a[class*="rounded"],
+  html.tablet main input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]),
+  html.tablet main select {
+    min-height: 48px;
+  }
+  html.tablet main input[type="checkbox"],
+  html.tablet main input[type="radio"] { width: 22px; height: 22px; }
+  html.tablet main table td,
+  html.tablet main table th { padding-top: 0.9rem; padding-bottom: 0.9rem; }
+
+  /* Menu latéral : entrées plus hautes */
+  html.tablet .side-nav a,
+  html.tablet .side-nav button { min-height: 46px; font-size: 15px; }
+
+  /* Barre d'accès rapide en bas de l'écran (remplace la barre du bas mobile) */
+  html.tablet .tablet-dock { display: flex; }
+  html.tablet .mobile-tabbar { display: none; }
+  html.tablet main { padding-bottom: 7.5rem !important; }
+}
+
+@media print {
+  .tablet-dock { display: none !important; }
+}

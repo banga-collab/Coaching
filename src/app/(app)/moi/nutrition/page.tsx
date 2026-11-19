@@ -12,6 +12,7 @@ import { WaterTracker } from "@/components/nutrition/water-tracker";
 import { ShoppingList, type ShopItem } from "@/components/nutrition/shopping-list";
 import { PlanMeals, PlanSummary } from "@/components/nutrition/plan-view";
 import { MACRO_COLORS, WATER_MEAL, fmtQty, planTargets } from "@/components/nutrition/shared";
+import { getT } from "@/lib/i18n";
 
 export const metadata = { title: "Ma nutrition" };
 
@@ -22,6 +23,7 @@ const VUES = [
 ] as const;
 
 export default async function MyNutritionPage({ searchParams }: { searchParams: Promise<{ date?: string; vue?: string }> }) {
+  const tr = await getT();
   const me = await getProfile();
   if (me.role !== "client") redirect("/nutrition");
   const sp = await searchParams;
@@ -34,9 +36,9 @@ export default async function MyNutritionPage({ searchParams }: { searchParams: 
   if (!cData) {
     return (
       <>
-        <PageHeader title="Ma nutrition" />
+        <PageHeader title={tr("moi.nutrition")} />
         <Card>
-          <Empty icon={<Hourglass className="size-6" />} title="Ton dossier n'est pas encore relié" text={`Demande à ton coach d'ajouter ton e-mail (${me.email}) à ta fiche.`} />
+          <Empty icon={<Hourglass className="size-6" />} title={tr("moi.notLinked")} text={`Demande à ton coach d'ajouter ton e-mail (${me.email}) à ta fiche.`} />
         </Card>
       </>
     );
@@ -73,7 +75,7 @@ export default async function MyNutritionPage({ searchParams }: { searchParams: 
 
   return (
     <div className="mx-auto max-w-2xl">
-      <PageHeader title="Ma nutrition 🥗" subtitle={plan ? `Plan : ${plan.name}` : "Note tes repas pour suivre tes apports"} />
+      <PageHeader title={`${tr("moi.nutrition")} 🥗`} subtitle={plan ? tr("moi.nutrition.plan", { plan: plan.name }) : tr("moi.nutrition.sub")} />
 
       {/* Onglets */}
       <div className="mb-5 grid grid-cols-3 gap-1 rounded-2xl bg-white p-1 ring-1 ring-line">

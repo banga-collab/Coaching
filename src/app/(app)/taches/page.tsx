@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { AlertTriangle, CalendarClock, CalendarDays, CheckCircle2, ChevronDown, Inbox, ListChecks, Plus, Sun } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { requireStaff } from "@/lib/auth";
+import { isManager, requireStaff } from "@/lib/auth";
 import type { Client, Profile, Task } from "@/lib/types";
 import { cn, dayKey } from "@/lib/utils";
 import { Card, Empty, Input, PageHeader, Select } from "@/components/ui";
@@ -65,7 +65,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const [{ data: tData }, { data: cData }, { data: pData }] = await Promise.all([
     query,
     supabase.from("clients").select("*").order("full_name"),
-    showAll ? supabase.from("profiles").select("id, full_name, email").in("role", ["admin", "coach"]) : Promise.resolve({ data: [] }),
+    showAll ? supabase.from("profiles").select("id, full_name, email").in("role", ["admin", "head_coach", "coach"]) : Promise.resolve({ data: [] }),
   ]);
   const tasks = (tData ?? []) as Task[];
   const clients = (cData ?? []) as Client[];
@@ -238,9 +238,13 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           )}
           <p className="flex items-center justify-center gap-1.5 pt-2 text-xs text-muted">
             <CalendarDays className="size-3.5" /> Les tâches marquées « Auto » sont créées par les{" "}
-            <Link href="/automatisations" className="font-semibold text-brand-600 hover:underline">
-              automatisations
-            </Link>
+            {isManager(me.role) ? (
+              <Link href="/automatisations" className="font-semibold text-brand-600 hover:underline">
+                automatisations
+              </Link>
+            ) : (
+              "automatisations"
+            )}
             .
           </p>
         </div>

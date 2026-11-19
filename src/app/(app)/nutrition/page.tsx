@@ -4,16 +4,19 @@ import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { Client, Food, MealPlan } from "@/lib/types";
 import { cn, num } from "@/lib/utils";
+import { normName } from "@/lib/video";
 import { Badge, Card, CardHeader, Empty, Kpi, LinkButton, PageHeader } from "@/components/ui";
 import { ConfirmIcon } from "@/components/phase1/confirm-icon";
 import { PlanCard } from "@/components/nutrition/plan-card";
 import { FoodForm } from "@/components/nutrition/food-form";
 import { FOOD_CATEGORIES, MACRO_COLORS } from "@/components/nutrition/shared";
 import { deleteFoodAction } from "@/actions/nutrition";
+import { ListToolbar } from "@/components/list-toolbar";
+import { Fold } from "@/components/fold";
 
 export const metadata = { title: "Nutrition" };
 
-type SP = { vue?: string; q?: string; cat?: string; edit?: string; ok?: string; filtre?: string };
+type SP = { vue?: string; q?: string; cat?: string; edit?: string; ok?: string; filtre?: string; type?: string };
 
 export default async function NutritionPage({ searchParams }: { searchParams: Promise<SP> }) {
   await requireStaff();
@@ -52,14 +55,16 @@ export default async function NutritionPage({ searchParams }: { searchParams: Pr
         }
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="Modèles" value={templates.length} icon={<LayoutTemplate className="size-4" />} />
-        <Kpi label="Plans actifs" value={activePlans.length} icon={<Users className="size-4" />} tone="accent" />
-        <Kpi label="Aliments" value={foods.length} icon={<Apple className="size-4" />} />
-        <Kpi label="Plats marocains" value={moroccanCount} icon={<BookOpen className="size-4" />} tone="accent" />
-      </div>
+      <Fold id="nutrition-kpis">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Kpi label="Modèles" value={templates.length} icon={<LayoutTemplate className="size-4" />} />
+          <Kpi label="Plans actifs" value={activePlans.length} icon={<Users className="size-4" />} tone="accent" />
+          <Kpi label="Aliments" value={foods.length} icon={<Apple className="size-4" />} />
+          <Kpi label="Plats marocains" value={moroccanCount} icon={<BookOpen className="size-4" />} tone="accent" />
+        </div>
+      </Fold>
 
-      <div className="-mx-4 mb-5 overflow-x-auto px-4 lg:mx-0 lg:px-0">
+      <div className="-mx-4 mb-3 overflow-x-auto px-4 lg:mx-0 lg:px-0">
         <div className="flex w-max gap-1 rounded-xl bg-white p-1 ring-1 ring-line">
           {tabs.map((t) => (
             <Link
@@ -78,78 +83,104 @@ export default async function NutritionPage({ searchParams }: { searchParams: Pr
         </div>
       </div>
 
-      {vue === "plans" ? <PlansView templates={templates} clientPlans={clientPlans} clientName={clientName} filter={sp.filtre} /> : <FoodsView foods={foods} sp={sp} />}
+      {vue === "plans" ? <PlansView templates={templates} clientPlans={clientPlans} clientName={clientName} sp={sp} /> : <FoodsView foods={foods} sp={sp} />}
     </>
   );
 }
 
-function PlansView({ templates, clientPlans, clientName, filter }: { templates: MealPlan[]; clientPlans: MealPlan[]; clientName: Map<string, string>; filter?: string }) {
-  const showAll = filter === "tous";
-  const shown = showAll ? clientPlans : clientPlans.filter((p) => p.active);
+function PlansView({ templates: allTemplates, clientPlans, clientName, sp }: { templates: MealPlan[]; clientPlans: MealPlan[]; clientName: Map<string, string>; sp: SP }) {
+  const q = sp.q ?? "";
+  const filtre = sp.filtre === "actifs" || sp.filtre === "inactifs" ? sp.filtre : "";
+  const type = sp.type === "modeles" || sp.type === "clients" ? sp.type : "";
+  // Recherche (insensible à la casse et aux accents) : nom, objectif, client
+  const needle = normName(q);
+  const match = (p: MealPlan) => !needle || normName([p.name, p.goal, p.client_id ? clientName.get(p.client_id) : null].filter(Boolean).join(" ")).includes(needle);
+  const templates = allTemplates.filter(match);
+  const searchedClient = clientPlans.filter(match);
+  const shown = filtre ? searchedClient.filter((p) => p.active === (filtre === "actifs")) : searchedClient;
+  const activeCount = searchedClient.filter((p) => p.active).length;
+  const filters = [
+    {
+      param: "type",
+      label: "Type",
+      options: [
+        { value: "modeles", label: "Modèles", count: templates.length },
+        { value: "clients", label: "Plans des clients", count: searchedClient.length },
+      ],
+    },
+    {
+      param: "filtre",
+      label: "Plans des clients",
+      options: [
+        { value: "actifs", label: "Actifs", count: activeCount },
+        { value: "inactifs", label: "Inactifs", count: searchedClient.length - activeCount },
+      ],
+    },
+  ];
+  const filtered = !!(q || filtre || type);
   return (
-    <div className="space-y-8">
-      <section>
-        <div className="mb-3 flex items-end justify-between gap-3">
-          <div>
-            <h2 className="font-display text-lg font-bold text-ink">Modèles</h2>
-            <p className="text-sm text-muted">Plans réutilisables à dupliquer pour un client</p>
+    <div className="space-y-6">
+      <ListToolbar className="mb-0!" placeholder="Plan, objectif ou client…" filters={filters} exportKind="nutrition" />
+      {type !== "clients" && (
+        <section>
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <div>
+              <h2 className="font-display text-lg font-bold text-ink">Modèles</h2>
+              <p className="text-sm text-muted">Plans réutilisables à dupliquer pour un client</p>
+            </div>
           </div>
-        </div>
-        {templates.length === 0 ? (
-          <Card>
-            <Empty
-              icon={<LayoutTemplate className="size-6" />}
-              title="Aucun modèle"
-              text="Crée un plan type (sèche, prise de masse, rééquilibrage marocain…) pour l'assigner en un clic."
-              action={
-                <LinkButton href="/nutrition/nouveau">
-                  <Plus className="size-4" /> Créer un modèle
-                </LinkButton>
-              }
-            />
-          </Card>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {templates.map((p) => (
-              <PlanCard key={p.id} plan={p} />
-            ))}
-          </div>
-        )}
-      </section>
+          {templates.length === 0 ? (
+            <Card>
+              {filtered ? (
+                <Empty icon={<LayoutTemplate className="size-6" />} title="Aucun modèle trouvé" text="Essaie une autre recherche." />
+              ) : (
+                <Empty
+                  icon={<LayoutTemplate className="size-6" />}
+                  title="Aucun modèle"
+                  text="Crée un plan type (sèche, prise de masse, rééquilibrage marocain…) pour l'assigner en un clic."
+                  action={
+                    <LinkButton href="/nutrition/nouveau">
+                      <Plus className="size-4" /> Créer un modèle
+                    </LinkButton>
+                  }
+                />
+              )}
+            </Card>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {templates.map((p) => (
+                <PlanCard key={p.id} plan={p} />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
-      <section>
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-          <div>
+      {type !== "modeles" && (
+        <section>
+          <div className="mb-3">
             <h2 className="font-display text-lg font-bold text-ink">Plans des clients</h2>
-            <p className="text-sm text-muted">{shown.length} plan{shown.length > 1 ? "s" : ""} {showAll ? "au total" : "actif" + (shown.length > 1 ? "s" : "")}</p>
+            <p className="text-sm text-muted">
+              {shown.length} plan{shown.length > 1 ? "s" : ""} {filtre === "actifs" ? "actif" + (shown.length > 1 ? "s" : "") : filtre === "inactifs" ? "inactif" + (shown.length > 1 ? "s" : "") : `au total · ${activeCount} actif${activeCount > 1 ? "s" : ""}`}
+            </p>
           </div>
-          <div className="flex gap-1 rounded-xl bg-white p-1 ring-1 ring-line">
-            {[
-              { k: "", l: "Actifs" },
-              { k: "tous", l: "Tous" },
-            ].map((o) => (
-              <Link
-                key={o.k || "actifs"}
-                href={o.k ? "/nutrition?filtre=tous" : "/nutrition"}
-                className={cn("rounded-lg px-3 py-1.5 text-sm font-semibold transition", (filter ?? "") === o.k ? "bg-brand-500 text-white shadow-sm" : "text-muted hover:text-ink")}
-              >
-                {o.l}
-              </Link>
-            ))}
-          </div>
-        </div>
-        {shown.length === 0 ? (
-          <Card>
-            <Empty icon={<Users className="size-6" />} title="Aucun plan client" text="Assigne un modèle à un client ou compose un plan sur mesure depuis sa fiche." />
-          </Card>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {shown.map((p) => (
-              <PlanCard key={p.id} plan={p} clientName={clientName.get(p.client_id!) ?? "Client"} />
-            ))}
-          </div>
-        )}
-      </section>
+          {shown.length === 0 ? (
+            <Card>
+              <Empty
+                icon={<Users className="size-6" />}
+                title={filtered ? "Aucun plan trouvé" : "Aucun plan client"}
+                text={filtered ? "Essaie une autre recherche ou un autre filtre." : "Assigne un modèle à un client ou compose un plan sur mesure depuis sa fiche."}
+              />
+            </Card>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {shown.map((p) => (
+                <PlanCard key={p.id} plan={p} clientName={clientName.get(p.client_id!) ?? "Client"} />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }
@@ -157,10 +188,28 @@ function PlansView({ templates, clientPlans, clientName, filter }: { templates: 
 function FoodsView({ foods, sp }: { foods: Food[]; sp: SP }) {
   const q = (sp.q ?? "").trim();
   const cat = sp.cat ?? "";
-  const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const norm = normName;
   const needle = norm(q);
   const list = foods.filter((f) => (!cat || (cat === "maroc" ? f.moroccan : f.category === cat)) && (!needle || norm(`${f.name} ${f.category}`).includes(needle)));
-  const cats = FOOD_CATEGORIES.filter((c) => foods.some((f) => f.category === c));
+  const catCount = new Map<string, number>();
+  let moroccan = 0;
+  for (const f of foods) {
+    if (needle && !norm(`${f.name} ${f.category}`).includes(needle)) continue;
+    catCount.set(f.category, (catCount.get(f.category) ?? 0) + 1);
+    if (f.moroccan) moroccan++;
+  }
+  const present = new Set(foods.map((f) => f.category));
+  const cats = FOOD_CATEGORIES.filter((c) => present.has(c));
+  const filters = [
+    {
+      param: "cat",
+      label: "Catégorie",
+      options: [
+        { value: "maroc", label: "Plats marocains", count: moroccan },
+        ...cats.filter((c) => c !== "Plats marocains").map((c) => ({ value: c, label: c, count: catCount.get(c) ?? 0 })),
+      ],
+    },
+  ];
   const editing = sp.edit ? (foods.find((f) => f.id === sp.edit) ?? null) : null;
   const href = (patch: Partial<SP>) => {
     const p = new URLSearchParams({ vue: "aliments" });
@@ -179,37 +228,7 @@ function FoodsView({ foods, sp }: { foods: Food[]; sp: SP }) {
             <CheckCircle2 className="size-4" /> {sp.ok === "maj" ? "Aliment mis à jour." : "Aliment ajouté à la bibliothèque."}
           </p>
         )}
-        <form className="relative">
-          <input type="hidden" name="vue" value="aliments" />
-          {cat && <input type="hidden" name="cat" value={cat} />}
-          <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-          <input
-            name="q"
-            defaultValue={q}
-            placeholder="Rechercher un aliment ou un plat (harira, tajine, poulet…)"
-            className="h-11 w-full rounded-xl border border-line bg-white pl-10 pr-3 text-sm focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-50"
-          />
-        </form>
-        <div className="-mx-4 overflow-x-auto px-4 lg:mx-0 lg:px-0">
-          <div className="flex w-max gap-1.5">
-            {[{ k: "", l: "Tous" }, { k: "maroc", l: "Plats marocains" }, ...cats.filter((c) => c !== "Plats marocains").map((c) => ({ k: c, l: c }))].map((c) => (
-              <Link
-                key={c.k || "all"}
-                href={href({ cat: c.k || undefined })}
-                className={cn(
-                  "whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition",
-                  cat === c.k
-                    ? c.k === "maroc"
-                      ? "border-accent-500 bg-accent-500 text-white"
-                      : "border-brand-500 bg-brand-500 text-white"
-                    : "border-line bg-white text-muted hover:border-slate-300 hover:text-ink",
-                )}
-              >
-                {c.l}
-              </Link>
-            ))}
-          </div>
-        </div>
+        <ListToolbar className="mb-0!" placeholder="Aliment ou plat (harira, tajine, poulet…)" filters={filters} exportKind="nutrition" />
 
         <Card className="overflow-hidden">
           <CardHeader title="Bibliothèque d'aliments" subtitle={`${list.length} résultat${list.length > 1 ? "s" : ""} · valeurs pour une portion`} icon={<Apple className="size-4" />} />
@@ -218,7 +237,7 @@ function FoodsView({ foods, sp }: { foods: Food[]; sp: SP }) {
           ) : (
             <ul className="divide-y divide-line border-t border-line">
               {list.map((f) => (
-                <li key={f.id} className={cn("group flex items-center gap-3 px-4 py-3 transition hover:bg-canvas/60 sm:px-5", editing?.id === f.id && "bg-brand-50/50")}>
+                <li key={f.id} className={cn("group flex items-center gap-3 px-4 py-2.5 transition hover:bg-canvas/60 sm:px-5", editing?.id === f.id && "bg-brand-50/50")}>
                   <span className={cn("grid size-10 shrink-0 place-items-center rounded-xl", f.moroccan ? "bg-accent-50 text-accent-600" : "bg-brand-50 text-brand-500")}>
                     {f.moroccan ? <UtensilsCrossed className="size-4" /> : <Apple className="size-4" />}
                   </span>
@@ -241,7 +260,7 @@ function FoodsView({ foods, sp }: { foods: Food[]; sp: SP }) {
                     <MacroPill c={MACRO_COLORS.carbs} l="G" v={f.carbs} />
                     <MacroPill c={MACRO_COLORS.fat} l="L" v={f.fat} />
                   </div>
-                  <p className="w-16 shrink-0 text-right font-display text-sm font-extrabold text-ink">
+                  <p className="w-16 shrink-0 text-end font-display text-sm font-extrabold text-ink">
                     {num(f.kcal)}
                     <span className="block text-[10px] font-semibold text-muted">kcal</span>
                   </p>

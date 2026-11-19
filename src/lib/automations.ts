@@ -1,12 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Automation, AutomationId, Client, Goal, GoalMetric, HealthCheck, Invoice, Measurement, Membership, Session, Task, WhatsAppMessage } from "./types";
+import type { Automation, AutomationId, Client, Goal, GoalMetric, HealthCheck, Measurement, Session, Task, WhatsAppMessage } from "./types";
 import { addDays, dayKey, fmtDate, fmtTime } from "./utils";
 import { WA_TEMPLATES } from "./whatsapp";
 import { sendWhatsApp } from "./whatsapp-api";
-import { membershipExpiringText } from "@/components/whatsapp/templates";
 
-/** Règles ajoutées par le module WhatsApp / abonnements (en plus des `AutomationId` historiques). */
-export type WaRuleId = "wa_session_reminder" | "wa_invoice_overdue" | "wa_checkin_missing" | "membership_expiring";
+/** Règles ajoutées par le module WhatsApp (en plus des `AutomationId` historiques). */
+export type WaRuleId = "wa_session_reminder" | "wa_checkin_missing";
 export type RuleId = AutomationId | WaRuleId;
 export type AutomationRule = Omit<Automation, "id"> & { id: RuleId };
 
@@ -23,17 +22,14 @@ export const AUTOMATION_ORDER: RuleId[] = [
   "checkin_reminder",
   "health_check_due",
   "absence_followup",
-  "invoice_overdue",
   "goal_reached",
   "inactive_client",
-  "membership_expiring",
   "wa_session_reminder",
-  "wa_invoice_overdue",
   "wa_checkin_missing",
 ];
 
 /** Règles qui envoient (ou simulent) un message WhatsApp. */
-export const WHATSAPP_RULES: RuleId[] = ["wa_session_reminder", "wa_invoice_overdue", "wa_checkin_missing", "membership_expiring"];
+export const WHATSAPP_RULES: RuleId[] = ["wa_session_reminder", "wa_checkin_missing"];
 
 export const AUTOMATION_META: Record<RuleId, AutomationMeta> = {
   checkin_reminder: {
@@ -55,15 +51,6 @@ export const AUTOMATION_META: Record<RuleId, AutomationMeta> = {
     effect: "Tâche pour le coach",
     param: { key: "count", label: "Absences consécutives", unit: "séances", min: 1, max: 10, def: 2 },
   },
-  invoice_overdue: {
-    title: "Facture en retard",
-    description: (p) =>
-      (p.days ?? 0) > 0
-        ? `Quand une facture envoyée n'est toujours pas payée ${p.days} jours après son échéance, le coach reçoit une notification et une tâche de relance.`
-        : "Dès qu'une facture envoyée dépasse sa date d'échéance sans être payée, le coach reçoit une notification et une tâche de relance.",
-    effect: "Notification + tâche",
-    param: { key: "days", label: "Tolérance après échéance", unit: "jours", min: 0, max: 60, def: 0 },
-  },
   goal_reached: {
     title: "Objectif atteint",
     description: () =>
@@ -77,26 +64,12 @@ export const AUTOMATION_META: Record<RuleId, AutomationMeta> = {
     effect: "Tâche pour le coach",
     param: { key: "days", label: "Délai sans séance", unit: "jours", min: 3, max: 90, def: 14 },
   },
-  membership_expiring: {
-    title: "Abonnement bientôt terminé",
-    description: (p) =>
-      `Quand un abonnement actif se termine dans ${p.days ?? 7} jours ou moins (et n'a pas déjà été renouvelé), le membre est prévenu dans son espace et sur WhatsApp, et une tâche de renouvellement est créée pour son coach. Une seule fois par abonnement.`,
-    effect: "Notification + tâche + WhatsApp",
-    param: { key: "days", label: "Prévenir avant la fin", unit: "jours", min: 1, max: 60, def: 7 },
-  },
   wa_session_reminder: {
     title: "WhatsApp : rappel de séance",
     description: (p) =>
-      `Chaque séance planifiée qui commence dans les ${p.hours ?? 24} prochaines heures déclenche un rappel WhatsApp au client (un seul message par client et par jour).`,
+      `Chaque séance acceptée par le coach qui commence dans les ${p.hours ?? 24} prochaines heures déclenche un rappel WhatsApp au client actif (un seul message par client et par jour).`,
     effect: "Message WhatsApp au client",
     param: { key: "hours", label: "Fenêtre avant la séance", unit: "heures", min: 2, max: 72, def: 24 },
-  },
-  wa_invoice_overdue: {
-    title: "WhatsApp : facture en retard",
-    description: (p) =>
-      `Quand une facture envoyée n'est pas payée ${p.days ?? 3} jour${(p.days ?? 3) > 1 ? "s" : ""} après son échéance, le client reçoit une relance WhatsApp courtoise. Une seule relance par facture.`,
-    effect: "Message WhatsApp au client",
-    param: { key: "days", label: "Retard minimum", unit: "jours", min: 1, max: 60, def: 3 },
   },
   wa_checkin_missing: {
     title: "WhatsApp : check-in manquant",
@@ -111,12 +84,9 @@ export const DEFAULT_PARAMS: Record<RuleId, Record<string, number>> = {
   checkin_reminder: { days: 7 },
   health_check_due: { days: 30 },
   absence_followup: { count: 2 },
-  invoice_overdue: { days: 0 },
   goal_reached: {},
   inactive_client: { days: 14 },
-  membership_expiring: { days: 7 },
   wa_session_reminder: { hours: 24 },
-  wa_invoice_overdue: { days: 3 },
   wa_checkin_missing: { days: 7 },
 };
 
@@ -125,12 +95,9 @@ export const DEFAULT_ENABLED: Record<RuleId, boolean> = {
   checkin_reminder: true,
   health_check_due: true,
   absence_followup: true,
-  invoice_overdue: true,
   goal_reached: true,
   inactive_client: true,
-  membership_expiring: true,
   wa_session_reminder: false,
-  wa_invoice_overdue: false,
   wa_checkin_missing: false,
 };
 
@@ -174,12 +141,11 @@ export async function runAutomations(
   const today = dayKey(now);
   const daysAgo = (n: number) => dayKey(addDays(now, -n));
 
-  const [aRes, cRes, hRes, sRes, iRes, gRes, mRes, tRes] = await Promise.all([
+  const [aRes, cRes, hRes, sRes, gRes, mRes, tRes] = await Promise.all([
     supabase.from("automations").select("*"),
     supabase.from("clients").select("*"),
     supabase.from("health_checks").select("client_id, checked_on").order("checked_on", { ascending: false }),
     supabase.from("sessions").select("client_id, starts_at, status").order("starts_at", { ascending: false }),
-    supabase.from("invoices").select("*").eq("status", "envoyee"),
     supabase.from("goals").select("*").eq("status", "en_cours"),
     supabase.from("measurements").select("*").order("measured_on", { ascending: true }),
     supabase.from("tasks").select("*").ilike("source", "auto:%").gte("created_at", addDays(now, -180).toISOString()),
@@ -191,7 +157,6 @@ export async function runAutomations(
   const active = clients.filter((c) => c.status === "actif");
   const health = (hRes.data ?? []) as Pick<HealthCheck, "client_id" | "checked_on">[];
   const sessions = (sRes.data ?? []) as Pick<Session, "client_id" | "starts_at" | "status">[];
-  const invoices = (iRes.data ?? []) as Invoice[];
   const goals = (gRes.data ?? []) as Goal[];
   const meas = (mRes.data ?? []) as Measurement[];
   const autoTasks = (tRes.data ?? []) as Task[];
@@ -223,7 +188,7 @@ export async function runAutomations(
     return true;
   }
 
-  async function notify(user_id: string | null, title: string, body: string | null, link: string | null, kind: "info" | "alerte" | "paiement" | "tache" = "info") {
+  async function notify(user_id: string | null, title: string, body: string | null, link: string | null, kind: "info" | "alerte" | "tache" = "info") {
     if (!user_id) return;
     const { error } = await supabase.from("notifications").insert({ user_id, title, body, link, kind, read: false });
     if (error) throw new Error(error.message);
@@ -237,7 +202,7 @@ export async function runAutomations(
       const { data, error } = await supabase
         .from("whatsapp_messages")
         .select("client_id, template, body, created_at")
-        .in("template", ["session_reminder", "invoice_overdue", "checkin_missing", "membership_expiring"])
+        .in("template", ["session_reminder", "checkin_missing"])
         .gte("created_at", addDays(now, -400).toISOString());
       if (error) throw new Error(error.message);
       waLog = (data ?? []) as WaLog[];
@@ -250,7 +215,6 @@ export async function runAutomations(
     return res.ok;
   }
   const firstName = (c: Client) => c.full_name.split(" ")[0] ?? c.full_name;
-  const madTxt = (v: number) => `${new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2 }).format(Number(v))} MAD`;
 
   const handlers: Record<RuleId, (p: Record<string, number>) => Promise<number>> = {
     async checkin_reminder(p) {
@@ -300,23 +264,6 @@ export async function runAutomations(
       return n;
     },
 
-    async invoice_overdue(p) {
-      const limit = daysAgo(p.days ?? 0);
-      let n = 0;
-      for (const inv of invoices) {
-        if (!inv.due_on || inv.due_on >= limit) continue;
-        const c = clientById.get(inv.client_id);
-        if (!c) continue;
-        if (autoTasks.some((t) => t.source === "auto:invoice_overdue" && t.client_id === c.id && t.title.includes(inv.number))) continue;
-        const amount = `${new Intl.NumberFormat("fr-FR").format(Number(inv.amount_mad))} MAD`;
-        const created = await addTask("invoice_overdue", c, `Facture en retard : ${c.full_name} (${inv.number})`, "haute", `${amount}, échéance le ${inv.due_on}.`);
-        if (!created) continue;
-        await notify(c.coach_id, "Facture en retard", `${c.full_name} – ${inv.number} – ${amount}`, "/facturation", "paiement");
-        n++;
-      }
-      return n;
-    },
-
     async goal_reached() {
       let n = 0;
       for (const g of goals) {
@@ -362,40 +309,10 @@ export async function runAutomations(
       for (const c of active) {
         const mine = sessions.filter((s) => s.client_id === c.id);
         const recent = mine.some((s) => s.status === "realisee" && new Date(s.starts_at) >= since);
-        const planned = mine.some((s) => s.status === "planifiee" && new Date(s.starts_at) >= now);
+        const planned = mine.some((s) => ["planifiee", "acceptee", "reportee"].includes(s.status) && new Date(s.starts_at) >= now);
         if (recent || planned) continue;
         if (new Date(c.start_date) > since) continue; // client trop récent
         if (await addTask("inactive_client", c, `Relancer ${c.full_name} : aucune séance depuis ${days} jours`, "normale")) n++;
-      }
-      return n;
-    },
-
-    async membership_expiring(p) {
-      const days = p.days ?? 7;
-      const limit = dayKey(addDays(now, days));
-      const { data, error } = await supabase.from("memberships").select("*").eq("status", "actif");
-      if (error) throw new Error(error.message);
-      const all = (data ?? []) as Membership[];
-      let n = 0;
-      for (const m of all) {
-        if (m.end_date < today || m.end_date > limit) continue;
-        // Déjà renouvelé : un autre abonnement actif du même membre se termine plus tard
-        if (all.some((o) => o.id !== m.id && o.client_id === m.client_id && o.end_date > m.end_date)) continue;
-        const c = clientById.get(m.client_id);
-        if (!c || c.status === "termine") continue;
-        const dateLabel = fmtDate(`${m.end_date}T12:00:00`, { day: "numeric", month: "long" });
-        if (autoTasks.some((t) => t.source === "auto:membership_expiring" && t.client_id === c.id && t.title.includes(m.name) && t.title.includes(dateLabel))) continue;
-        const created = await addTask(
-          "membership_expiring",
-          c,
-          `Renouvellement : « ${m.name} » de ${c.full_name} se termine le ${dateLabel}`,
-          "haute",
-          m.sessions_total ? `${m.sessions_used}/${m.sessions_total} séances utilisées.` : null,
-        );
-        if (!created) continue;
-        await notify(c.user_id, "Ton abonnement se termine bientôt", `« ${m.name} » prend fin le ${dateLabel}. Pense à le renouveler pour continuer sur ta lancée 💪`, "/moi/carte", "alerte");
-        if (c.phone) await wa(c, "membership_expiring", membershipExpiringText(firstName(c), m.name, dateLabel), [firstName(c), m.name, dateLabel]);
-        n++;
       }
       return n;
     },
@@ -406,7 +323,7 @@ export async function runAutomations(
       const { data, error } = await supabase
         .from("sessions")
         .select("*")
-        .eq("status", "planifiee")
+        .eq("status", "acceptee")
         .gte("starts_at", now.toISOString())
         .lte("starts_at", until.toISOString())
         .order("starts_at", { ascending: true });
@@ -416,29 +333,13 @@ export async function runAutomations(
       let n = 0;
       for (const s of (data ?? []) as Session[]) {
         const c = clientById.get(s.client_id);
-        if (!c || !c.phone || c.status === "termine") continue;
+        if (!c || !c.phone || c.status !== "actif") continue;
         // Un seul rappel par client et par jour
         if (log.some((m) => m.template === "session_reminder" && m.client_id === c.id && dayKey(m.created_at) === today)) continue;
         const d = dayKey(s.starts_at);
         const dayTxt = d === today ? "aujourd'hui" : d === tomorrow ? "demain" : `le ${fmtDate(s.starts_at, { weekday: "long", day: "numeric", month: "long" })}`;
         const when = `${dayTxt} à ${fmtTime(s.starts_at)}`;
         if (await wa(c, "session_reminder", WA_TEMPLATES.sessionReminder(firstName(c), when), [firstName(c), when])) n++;
-      }
-      return n;
-    },
-
-    async wa_invoice_overdue(p) {
-      const limit = daysAgo(Math.max(1, p.days ?? 3));
-      const log = await waHistory();
-      let n = 0;
-      for (const inv of invoices) {
-        if (!inv.due_on || inv.due_on > limit) continue;
-        const c = clientById.get(inv.client_id);
-        if (!c || !c.phone) continue;
-        // Une seule relance par facture
-        if (log.some((m) => m.template === "invoice_overdue" && m.client_id === c.id && m.body.includes(inv.number))) continue;
-        const amount = madTxt(inv.amount_mad);
-        if (await wa(c, "invoice_overdue", WA_TEMPLATES.invoice(firstName(c), inv.number, amount), [firstName(c), inv.number, amount])) n++;
       }
       return n;
     },

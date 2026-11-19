@@ -14,7 +14,7 @@ import {
   Smartphone,
   XCircle,
 } from "lucide-react";
-import { requireStaff } from "@/lib/auth";
+import { requireManager } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getSettings } from "@/lib/settings";
 import { whatsappEnv, whatsappMode } from "@/lib/whatsapp-api";
@@ -36,9 +36,7 @@ const STATUS: Record<WhatsAppMessage["status"], { label: string; tone: "green" |
 
 const TEMPLATE_TONE: Record<string, "brand" | "accent" | "red" | "green" | "amber" | "gray"> = {
   session_reminder: "brand",
-  invoice_overdue: "red",
   checkin_missing: "accent",
-  membership_expiring: "amber",
   welcome: "green",
   manuel: "gray",
 };
@@ -51,7 +49,8 @@ const FILTERS = [
 ];
 
 export default async function WhatsAppPage({ searchParams }: { searchParams: Promise<{ statut?: string; client?: string }> }) {
-  const me = await requireStaff();
+  // Réservé aux managers (admin, head coach)
+  const me = await requireManager();
   const { statut = "", client: preset } = await searchParams;
   const supabase = await createClient();
   const [settings, { data: mData }, { data: cData }] = await Promise.all([
@@ -315,7 +314,7 @@ export default async function WhatsAppPage({ searchParams }: { searchParams: Pro
                 {
                   icon: MessagesSquare,
                   t: "Modèles approuvés",
-                  d: "Hors fenêtre de 24 h, Meta n'accepte que des modèles approuvés. Créez-les dans le WhatsApp Manager (langue « fr », variables {{1}}, {{2}}…) puis indiquez leur nom dans WHATSAPP_TEMPLATE_SESSION_REMINDER, …_INVOICE_OVERDUE, …_CHECKIN_MISSING, …_MEMBERSHIP_EXPIRING.",
+                  d: "Hors fenêtre de 24 h, Meta n'accepte que des modèles approuvés. Créez-les dans le WhatsApp Manager (langue « fr », variables {{1}}, {{2}}…) puis indiquez leur nom dans WHATSAPP_TEMPLATE_SESSION_REMINDER, …_CHECKIN_MISSING, …_WELCOME.",
                 },
                 {
                   icon: Settings,

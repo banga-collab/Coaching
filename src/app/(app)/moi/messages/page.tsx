@@ -6,10 +6,12 @@ import type { Client, Message, Profile } from "@/lib/types";
 import { Avatar, Card, Empty, PageHeader } from "@/components/ui";
 import { Thread } from "@/components/business/thread";
 import { Composer } from "@/components/business/composer";
+import { getT } from "@/lib/i18n";
 
 export const metadata = { title: "Messages" };
 
 export default async function MyMessagesPage() {
+  const tr = await getT();
   const me = await getProfile();
   if (me.role !== "client") redirect("/messages");
   const supabase = await createClient();
@@ -18,11 +20,11 @@ export default async function MyMessagesPage() {
   if (!cData) {
     return (
       <>
-        <PageHeader title="Messages" />
+        <PageHeader title={tr("moi.messages")} />
         <Card>
           <Empty
             icon={<Hourglass className="size-6" />}
-            title="Ton dossier n'est pas encore relié"
+            title={tr("moi.notLinked")}
             text="Dès que ton coach aura relié ton compte à ta fiche, tu pourras lui écrire ici."
           />
         </Card>
@@ -47,7 +49,7 @@ export default async function MyMessagesPage() {
 
   return (
     <>
-      <PageHeader title="Messages" subtitle="Pose tes questions à ton coach, il te répond ici." />
+      <PageHeader title={tr("moi.messages")} subtitle={tr("moi.messages.sub")} />
       <Card className="flex h-[calc(100dvh-250px)] min-h-[440px] flex-col overflow-hidden lg:h-[calc(100dvh-190px)]">
         <header className="flex items-center gap-3 border-b border-line bg-white px-4 py-3 sm:px-5">
           <span className="relative">

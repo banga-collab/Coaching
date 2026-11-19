@@ -11,7 +11,6 @@ import {
   ExternalLink,
   Image as ImageIcon,
   Palette,
-  Receipt,
   RotateCcw,
   TrendingUp,
   Users,
@@ -46,6 +45,9 @@ export function SettingsForm({ settings: s }: { settings: Settings }) {
   return (
     <form action={action} className="grid gap-5 pb-24 lg:grid-cols-[minmax(0,1fr)_340px] lg:pb-0">
       <div className="min-w-0 space-y-5">
+        {/* Anciennes données de facturation (gérées par le CRM général) : conservées telles quelles. */}
+        <input type="hidden" name="ice" value={s.ice ?? ""} />
+        <input type="hidden" name="invoice_footer" value={s.invoice_footer ?? ""} />
         {state?.error && (
           <p className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             <AlertCircle className="mt-0.5 size-4 shrink-0" /> {state.error}
@@ -54,7 +56,7 @@ export function SettingsForm({ settings: s }: { settings: Settings }) {
 
         {/* Identité */}
         <Card>
-          <CardHeader icon={<Building2 className="size-4" />} title="Identité" subtitle="Nom affiché dans l'application, les factures et la page de réservation." />
+          <CardHeader icon={<Building2 className="size-4" />} title="Identité" subtitle="Nom affiché dans l'application, les rapports et la page de réservation." />
           <div className="grid gap-4 px-5 pb-5 sm:grid-cols-2">
             <Field label="Nom de la salle">
               <Input name="brand_name" required value={brandName} onChange={(e) => setBrandName(e.target.value)} />
@@ -94,7 +96,7 @@ export function SettingsForm({ settings: s }: { settings: Settings }) {
 
         {/* Coordonnées */}
         <Card>
-          <CardHeader icon={<Contact className="size-4" />} title="Coordonnées" subtitle="Affichées sur les factures, les rapports et la page de réservation." />
+          <CardHeader icon={<Contact className="size-4" />} title="Coordonnées" subtitle="Affichées sur les rapports et la page de réservation." />
           <div className="grid gap-4 px-5 pb-5 sm:grid-cols-2">
             <Field label="Téléphone">
               <Input name="phone" type="tel" defaultValue={s.phone ?? ""} placeholder="05 28 00 00 00" />
@@ -105,21 +107,8 @@ export function SettingsForm({ settings: s }: { settings: Settings }) {
             <Field label="E-mail">
               <Input name="email" type="email" defaultValue={s.email ?? ""} placeholder="contact@salle.ma" />
             </Field>
-            <Field label="ICE" hint="Identifiant commun de l'entreprise (factures).">
-              <Input name="ice" defaultValue={s.ice ?? ""} inputMode="numeric" placeholder="001234567000089" />
-            </Field>
             <Field label="Adresse" className="sm:col-span-2">
               <Input name="address" defaultValue={s.address ?? ""} placeholder="Quartier, ville" />
-            </Field>
-          </div>
-        </Card>
-
-        {/* Facturation */}
-        <Card>
-          <CardHeader icon={<Receipt className="size-4" />} title="Facturation" subtitle="Texte imprimé en bas de chaque facture." />
-          <div className="px-5 pb-5">
-            <Field label="Pied de facture">
-              <Textarea name="invoice_footer" rows={3} defaultValue={s.invoice_footer ?? ""} placeholder="Merci pour votre confiance. Paiement à réception." />
             </Field>
           </div>
         </Card>

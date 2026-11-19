@@ -1,59 +1,110 @@
 import { CalendarDays, Dumbbell, NotebookPen } from "lucide-react";
-import type { Client, Session, SessionExercise } from "@/lib/types";
-import { SESSION_TYPES, isoToAgadir } from "@/lib/utils";
+import type { Client, Session, SessionExercise, SessionStatus } from "@/lib/types";
+import { allowedStatuses, timeReached, type StaffMember } from "@/lib/planning";
+import { SESSION_LABEL, SESSION_TYPES, isoToAgadir } from "@/lib/utils";
 import { ActionForm } from "@/components/action-form";
 import { Card, Field, Input, LinkButton, SectionTitle, Select, Textarea } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { ExerciseRows } from "@/components/exercise-rows";
-import { saveSessionAction } from "../actions";
+import { saveSessionPlanningAction } from "@/actions/planning";
+import { ClientPicker, PriceInput, TypePicker } from "@/components/planning/pickers";
+import { SlotCalendar } from "@/components/planning/slot-calendar";
 
 const agadir = isoToAgadir;
 
-export function SessionForm({ clients, session, exercises, defaultClient, defaultDate }: { clients: Pick<Client, "id" | "full_name">[]; session?: Session; exercises?: SessionExercise[]; defaultClient?: string; defaultDate?: string }) {
-  const when = session ? agadir(session.starts_at) : { date: defaultDate ?? new Date().toISOString().slice(0, 10), time: "18:00" };
+export function SessionForm({
+  clients,
+  session,
+  exercises,
+  defaultClient,
+  defaultDate,
+  defaultTime,
+  coaches,
+  defaultCoach,
+  types,
+  prices,
+  selfId,
+}: {
+  clients: Pick<Client, "id" | "full_name">[];
+  session?: Session;
+  exercises?: SessionExercise[];
+  defaultClient?: string;
+  defaultDate?: string;
+  defaultTime?: string;
+  /** Liste des coachs (head coach / admin uniquement) : permet d'affecter la séance */
+  coaches?: StaffMember[];
+  defaultCoach?: string;
+  /** Types de séance (liste gérée) */
+  types?: string[];
+  /** Prix indicatif par défaut de chaque type (DH) */
+  prices?: Record<string, number>;
+  /** Coach connecté (pour afficher ses créneaux libres quand il planifie lui-même) */
+  selfId?: string;
+}) {
+  const when = session ? agadir(session.starts_at) : { date: defaultDate ?? agadir(new Date().toISOString()).date, time: defaultTime ?? "18:00" };
+  // Statuts proposés : seulement les suites logiques du statut actuel (contrôlées aussi côté serveur)
+  const now = Date.now();
+  const options = session
+    ? allowedStatuses(session.status, { isCoach: session.coach_id === selfId, started: new Date(session.starts_at).getTime() <= now, reached: timeReached(session, now) })
+    : null;
+  const label = (st: SessionStatus | "a_venir") => (st === "a_venir" ? "À reprogrammer (à venir)" : SESSION_LABEL[st]);
   return (
-    <ActionForm action={saveSessionAction}>
+    <ActionForm action={saveSessionPlanningAction}>
       {session && <input type="hidden" name="id" value={session.id} />}
       <Card className="p-5 sm:p-7">
         <SectionTitle icon={<CalendarDays className="size-4" />}>Planning</SectionTitle>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Client *" className="sm:col-span-2">
-            <Select name="client_id" required defaultValue={session?.client_id ?? defaultClient ?? ""}>
-              <option value="" disabled>
-                Choisir un client…
-              </option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.full_name}
-                </option>
-              ))}
-            </Select>
+            <ClientPicker clients={clients} defaultValue={session?.client_id ?? defaultClient} />
           </Field>
-          <Field label="Date *">
-            <Input name="date" type="date" required defaultValue={when.date} />
-          </Field>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Heure">
-              <Input name="time" type="time" defaultValue={when.time} />
-            </Field>
-            <Field label="Durée (min)">
-              <Input name="duration_min" inputMode="numeric" defaultValue={session?.duration_min ?? 60} />
-            </Field>
+          <div className="sm:col-span-2">
+            <span className="mb-1.5 block text-xs font-semibold text-slate-600">Date et heure *</span>
+            <SlotCalendar defaultDate={when.date} defaultTime={when.time} coachId={coaches && coaches.length > 0 ? undefined : (session?.coach_id ?? selfId)} excludeId={session?.id} />
           </div>
-          <Field label="Type de séance">
-            <Input name="type" list="types" defaultValue={session?.type ?? ""} placeholder="Choisir ou écrire…" />
-            <datalist id="types">
-              {SESSION_TYPES.map((t) => (
-                <option key={t} value={t} />
-              ))}
-            </datalist>
+          <Field label="Durée (min)">
+            <Input name="duration_min" inputMode="numeric" defaultValue={session?.duration_min ?? 60} />
           </Field>
-          <Field label="Statut">
-            <Select name="status" defaultValue={session?.status ?? "planifiee"}>
-              <option value="planifiee">Planifiée</option>
-              <option value="realisee">Réalisée</option>
-              <option value="absent">Absent</option>
-              <option value="annulee">Annulée</option>
+          <Field label="Type de séance">
+            <TypePicker types={types ?? SESSION_TYPES} defaultValue={session?.type} prices={prices} />
+          </Field>
+          <Field label="Prix (DH)" hint="Prix indicatif de la séance, pré-rempli selon le type (information seulement).">
+            <PriceInput defaultValue={session ? (session.price_mad ?? null) : null} />
+          </Field>
+          {coaches && coaches.length > 0 && (
+            <Field label="Coach" hint="Si ce n'est pas toi, la séance lui est envoyée pour confirmation (créneau vérifié).">
+              <Select name="coach_id" defaultValue={session?.coach_id ?? defaultCoach ?? ""}>
+                {!session && <option value="">Coach habituel du client</option>}
+                {coaches.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.full_name || p.email}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
+          <Field
+            label="Statut"
+            hint={
+              session
+                ? "Seules les suites logiques sont proposées : « Terminée » une fois l'heure passée, « Absent » dès 30 min avant, « Acceptée » par le coach lui-même."
+                : "« À venir » : le créneau du coach est vérifié (disponibilités, congés, cours collectifs, autres séances)."
+            }
+          >
+            <Select name="status" defaultValue={session ? session.status : "a_venir"}>
+              {options ? (
+                options.map((st) => (
+                  <option key={st} value={st}>
+                    {label(st)}
+                  </option>
+                ))
+              ) : (
+                <>
+                  <option value="a_venir">À venir</option>
+                  <option value="realisee">Déjà réalisée</option>
+                  <option value="absent">Absent</option>
+                  <option value="annulee">Annulée</option>
+                </>
+              )}
             </Select>
           </Field>
         </div>

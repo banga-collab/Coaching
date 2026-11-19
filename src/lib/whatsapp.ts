@@ -19,7 +19,6 @@ export function waLink(phone: string | null | undefined, text?: string): string 
 export const WA_TEMPLATES = {
   sessionReminder: (first: string, when: string) => `Bonjour ${first} 👋 Petit rappel : ta séance est prévue ${when}. À tout à l'heure au Complexe Moov'Up !`,
   checkin: (first: string) => `Salut ${first} ! N'oublie pas ton check-in de la semaine sur l'app Moov'Up 💪 (2 minutes)`,
-  invoice: (first: string, number: string, amount: string) => `Bonjour ${first}, voici un rappel pour la facture ${number} d'un montant de ${amount}. Merci !`,
   welcome: (first: string) => `Bienvenue chez Moov'Up ${first} ! Crée ton compte sur l'app avec ton e-mail pour suivre ta progression.`,
   generic: (first: string) => `Bonjour ${first} 👋`,
 };

@@ -1,4 +1,4 @@
-import { requireStaff } from "@/lib/auth";
+import { isManager, listActiveCoaches, requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { Profile } from "@/lib/types";
 import { PageHeader } from "@/components/ui";
@@ -10,11 +10,11 @@ export const metadata = { title: "Nouveau client" };
 
 export default async function NewClientPage() {
   const me = await requireStaff();
+  // Admin et head coach choisissent le coach référent parmi le personnel actif ; un coach se l'attribue.
   let coaches: Pick<Profile, "id" | "full_name" | "email">[] | undefined;
-  if (me.role === "admin") {
+  if (isManager(me.role)) {
     const supabase = await createClient();
-    const { data } = await supabase.from("profiles").select("id, full_name, email").in("role", ["admin", "coach"]).order("full_name");
-    coaches = data ?? [];
+    coaches = await listActiveCoaches(supabase);
   }
   return (
     <div className="mx-auto max-w-3xl">

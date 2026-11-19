@@ -64,8 +64,12 @@ export function addDays(d: Date, n: number) {
 
 export const STATUS_LABEL: Record<ClientStatus, string> = { actif: "Actif", pause: "En pause", termine: "Terminé" };
 export const SESSION_LABEL: Record<SessionStatus, string> = {
-  planifiee: "Planifiée",
-  realisee: "Réalisée",
+  planifiee: "En attente du coach",
+  acceptee: "Acceptée",
+  refusee: "Refusée",
+  reportee: "Report proposé",
+  en_cours: "En cours",
+  realisee: "Terminée",
   absent: "Absent",
   annulee: "Annulée",
 };

@@ -77,21 +77,8 @@ export async function saveWorkoutAction(input: SaveWorkoutInput): Promise<SaveWo
     .single();
   if (error || !data) return { ok: false, error: "Impossible d'enregistrer ta séance : " + (error?.message ?? "erreur inconnue") };
 
-  // Compte aussi la séance dans les présences du coach (peut échouer sous RLS en mode réel : on ignore).
-  try {
-    await supabase.from("sessions").insert({
-      client_id: client.id,
-      coach_id: client.coach_id,
-      starts_at: started.toISOString(),
-      duration_min: Math.max(1, Math.round((now.getTime() - started.getTime()) / 60000)),
-      type: dayTitle,
-      status: "realisee",
-      rpe,
-      notes: notes ? `Séance en autonomie — ${notes}` : "Séance en autonomie (suivi en direct)",
-    });
-  } catch {
-    /* ignoré */
-  }
+  // Séance en autonomie : seul le journal d'entraînement est enregistré. Elle ne crée PAS de séance
+  // coach (table sessions), sinon elle serait comptée dans les stats et l'historique du coach.
 
   revalidatePath("/moi/seance");
   revalidatePath(`/clients/${client.id}`);

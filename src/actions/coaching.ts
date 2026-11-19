@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile } from "@/lib/auth";
+import { getProfile, isManager } from "@/lib/auth";
 import { parseNum, str } from "@/lib/utils";
 import { AUTOMATION_META, runAutomations, type AutomationSummary } from "@/lib/automations";
 import type { FormState } from "@/components/action-form";
@@ -14,6 +14,13 @@ const fail = (error: string): FormState => ({ error });
 async function staff() {
   const me = await getProfile();
   if (me.role === "client") throw new Error("Accès refusé.");
+  return me;
+}
+
+/** Automatisations : réservées aux managers (admin, head coach) */
+async function manager() {
+  const me = await getProfile();
+  if (!isManager(me.role)) throw new Error("Accès refusé.");
   return me;
 }
 
@@ -223,7 +230,7 @@ export async function deleteTaskAction(fd: FormData) {
 const isRule = (v: unknown): v is AutomationId => typeof v === "string" && v in AUTOMATION_META;
 
 export async function toggleAutomationAction(fd: FormData) {
-  await staff();
+  await manager();
   const id = fd.get("id");
   if (!isRule(id)) return;
   const supabase = await createClient();
@@ -232,7 +239,7 @@ export async function toggleAutomationAction(fd: FormData) {
 }
 
 export async function saveAutomationParamAction(fd: FormData) {
-  await staff();
+  await manager();
   const id = fd.get("id");
   if (!isRule(id)) return;
   const meta = AUTOMATION_META[id].param;
@@ -252,7 +259,7 @@ export async function runAutomationsAction(prev: RunState, fd: FormData): Promis
   void prev;
   void fd;
   const me = await getProfile();
-  if (me.role === "client") return { error: "Accès refusé." };
+  if (!isManager(me.role)) return { error: "Accès refusé." };
   try {
     const supabase = await createClient();
     const summary = await runAutomations(supabase, { actorId: me.id });

@@ -23,13 +23,8 @@ export function seedV3(db: DB, uid: () => string): DB {
   const C = (i: number) => clients[i]!;
   const packages = db.packages ?? [];
 
-  // Codes personnels
-  clients.forEach((c, i) => {
-    c.access_code = `MU${String(4821 + i * 137).padStart(6, "0")}`;
-    c.referral_code = ["KARIM10", "SALMA10", "YOUSSEF10", "NADIA10", "OMAR10", "IMANE10", "MEHDI10", "LEILA10"][i] ?? `MU${i}`;
-  });
   const s = db.settings?.[0];
-  if (s) Object.assign(s, { payment_provider: "stripe", referral_reward_mad: 200, referral_discount_pct: 10, whatsapp_enabled: false });
+  if (s) Object.assign(s, { whatsapp_enabled: false });
 
   /* ---------- Aliments (dont plats marocains) ---------- */
   const F = (name: string, category: string, portion: string, grams: number, kcal: number, protein: number, carbs: number, fat: number, moroccan = false) => ({
@@ -159,9 +154,7 @@ export function seedV3(db: DB, uid: () => string): DB {
   /* ---------- WhatsApp ---------- */
   const whatsapp_messages = [
     [0, "session_reminder", "Bonjour Karim 👋 Petit rappel : ta séance est prévue demain à 07:00. À demain au Complexe Moov'Up !", -1, "simule"],
-    [5, "invoice_overdue", "Bonjour Imane, voici un rappel pour la facture MU-2026-0031 d'un montant de 1 200 MAD. Merci !", -1, "simule"],
     [3, "checkin_missing", "Salut Nadia ! N'oublie pas ton check-in de la semaine sur l'app Moov'Up 💪", -2, "simule"],
-    [4, "membership_expiring", "Bonjour Omar, ton abonnement Moov'Up a expiré. On te réserve une place ? 😊", -3, "simule"],
   ].map(([ci, template, body, d, status]) => ({
     id: uid(), client_id: C(ci as number).id, to_phone: C(ci as number).phone, template, body, status, error: null, provider_id: null, created_at: at(d as number, 18), sent_at: at(d as number, 18),
   }));
@@ -261,7 +254,7 @@ export function seedV3(db: DB, uid: () => string): DB {
 
   /* ---------- Automatisations supplémentaires ---------- */
   const automations = db.automations ?? [];
-  [["wa_session_reminder", { hours: 24 }, false], ["wa_invoice_overdue", { days: 3 }, false], ["wa_checkin_missing", { days: 7 }, false], ["membership_expiring", { days: 7 }, true]].forEach(([id, params, enabled]) => {
+  [["wa_session_reminder", { hours: 24 }, false], ["wa_checkin_missing", { days: 7 }, false]].forEach(([id, params, enabled]) => {
     if (!automations.find((a) => a.id === id)) automations.push({ id, params, enabled, last_run: null, last_count: null });
   });
 

@@ -1,12 +1,15 @@
 import Link from "next/link";
+import { AgendaTabs } from "@/components/planning/agenda-tabs";
 import { headers } from "next/headers";
 import { CalendarCheck, CalendarClock, Check, ExternalLink, Globe, Mail, MessageSquareText, Phone, X } from "lucide-react";
-import { requireStaff } from "@/lib/auth";
+import { isManager, requireStaff } from "@/lib/auth";
+import { freeCoachesIn, loadPlanningData, loadStaff, staffName } from "@/lib/planning";
 import { createClient } from "@/lib/supabase/server";
 import { getSettings } from "@/lib/settings";
 import type { BookingRequest } from "@/lib/types";
 import { cn, fmtDate, fmtTime } from "@/lib/utils";
-import { Avatar, Badge, Card, Empty, Kpi, PageHeader } from "@/components/ui";
+import { Avatar, Badge, Card, Empty, Kpi, PageHeader, Select } from "@/components/ui";
+import { PlanForm } from "@/components/planning/plan-form";
 import { SubmitButton } from "@/components/submit-button";
 import { ConfirmButton } from "@/components/confirm-button";
 import { WhatsAppButton } from "@/components/modules/whatsapp-button";
@@ -28,14 +31,25 @@ const FILTERS = [
 ] as const;
 
 export default async function ReservationsPage({ searchParams }: { searchParams: Promise<{ statut?: string }> }) {
-  const [{ statut = "toutes" }] = await Promise.all([searchParams, requireStaff()]);
+  const [{ statut = "toutes" }, me] = await Promise.all([searchParams, requireStaff()]);
+  const manager = isManager(me.role);
   const supabase = await createClient();
-  const [{ data }, settings, h] = await Promise.all([
+  const [{ data }, settings, h, staff] = await Promise.all([
     supabase.from("booking_requests").select("*").order("created_at", { ascending: false }).limit(300),
     getSettings(),
     headers(),
+    loadStaff(supabase),
   ]);
   const all = (data ?? []) as BookingRequest[];
+  // Coachs libres pour chaque demande à confirmer (même contrôle que le planning)
+  const open = all.filter((b) => b.status === "nouvelle" && new Date(b.wanted_at).getTime() > Date.now());
+  const slotMin = Math.min(240, Math.max(15, Number(settings.booking_hours.slot) || 60));
+  const freeBy = new Map<string, Set<string>>();
+  if (open.length) {
+    const times = open.map((b) => b.wanted_at).sort();
+    const pd = await loadPlanningData(supabase, times[0]!, new Date(new Date(times.at(-1)!).getTime() + slotMin * 60000).toISOString());
+    for (const b of open) freeBy.set(b.id, new Set(freeCoachesIn(pd, staff, b.wanted_at, slotMin).map((p) => p.id)));
+  }
   const order = { nouvelle: 0, confirmee: 1, refusee: 2 } as const;
   const rows = all
     .filter((b) => statut === "toutes" || b.status === statut)
@@ -49,6 +63,7 @@ export default async function ReservationsPage({ searchParams }: { searchParams:
 
   return (
     <>
+      <AgendaTabs active="reservations" />
       <PageHeader title="Réservations" subtitle="Demandes de rendez-vous reçues depuis la page de réservation en ligne." />
 
       <div className="mb-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
@@ -177,12 +192,32 @@ export default async function ReservationsPage({ searchParams }: { searchParams:
                             <X className="size-4" /> Refuser
                           </ConfirmButton>
                         </form>
-                        <form action={confirmBookingAction}>
-                          <input type="hidden" name="id" value={b.id} />
-                          <SubmitButton variant="brand" className="h-9 px-3.5" pendingText="Confirmation…">
-                            <Check className="size-4" /> Confirmer
-                          </SubmitButton>
-                        </form>
+                        {past ? (
+                          <span className="text-xs font-semibold text-red-700">Horaire passé : à refuser ou à replanifier</span>
+                        ) : (
+                          <PlanForm action={confirmBookingAction} className="flex flex-wrap items-start gap-2">
+                            <input type="hidden" name="id" value={b.id} />
+                            {manager ? (
+                              <Select name="coach_id" required defaultValue={freeBy.get(b.id)?.has(me.id) ? me.id : ""} className="h-9 w-52 text-xs" aria-label="Coach de la séance">
+                                <option value="" disabled>
+                                  Choisir le coach…
+                                </option>
+                                {staff.map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {freeBy.get(b.id)?.has(p.id) ? "✓ " : "✗ "}
+                                    {staffName(p)}
+                                    {freeBy.get(b.id)?.has(p.id) ? " (libre)" : " (occupé)"}
+                                  </option>
+                                ))}
+                              </Select>
+                            ) : (
+                              <input type="hidden" name="coach_id" value={me.id} />
+                            )}
+                            <SubmitButton variant="brand" className="h-9 px-3.5" pendingText="Confirmation…">
+                              <Check className="size-4" /> Confirmer
+                            </SubmitButton>
+                          </PlanForm>
+                        )}
                       </>
                     )}
                     {b.status === "confirmee" && b.session_id && (

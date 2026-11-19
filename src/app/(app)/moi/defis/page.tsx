@@ -10,6 +10,7 @@ import { Avatar, Card, Empty, PageHeader } from "@/components/ui";
 import { ProgressRing, RankMedal } from "@/components/challenges/progress-ring";
 import { BadgeMedal } from "@/components/challenges/badge-icon";
 import { StepsForm } from "@/components/challenges/steps-form";
+import { getT } from "@/lib/i18n";
 
 export const metadata = { title: "Défis & badges" };
 
@@ -45,6 +46,7 @@ function Leaderboard({ rows, meId, unit }: { rows: LeaderRow[]; meId: string; un
 }
 
 export default async function MyChallengesPage() {
+  const tr = await getT();
   const me = await getProfile();
   if (me.role !== "client") redirect("/defis");
   const supabase = await createClient();
@@ -52,9 +54,9 @@ export default async function MyChallengesPage() {
   if (!cData) {
     return (
       <>
-        <PageHeader title="Défis & badges" />
+        <PageHeader title={tr("moi.challenges")} />
         <Card>
-          <Empty icon={<Trophy className="size-6" />} title="Ton dossier n'est pas encore relié" text="Demande à ton coach de relier ton compte pour participer aux défis." />
+          <Empty icon={<Trophy className="size-6" />} title={tr("moi.notLinked")} text="Demande à ton coach de relier ton compte pour participer aux défis." />
         </Card>
       </>
     );
@@ -78,7 +80,7 @@ export default async function MyChallengesPage() {
 
   return (
     <>
-      <PageHeader title="Défis & badges" subtitle={`Allez ${firstName}, chaque séance compte ! 💪`} />
+      <PageHeader title={tr("moi.challenges")} subtitle={tr("moi.challenges.sub", { name: firstName ?? "" })} />
 
       {/* Défis en cours */}
       {active.length === 0 ? (

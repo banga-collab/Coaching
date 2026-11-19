@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile } from "@/lib/auth";
+import { checkActiveCoach, getProfile } from "@/lib/auth";
+import { checkSlot, firstName, loadPlanningData, staffName } from "@/lib/planning";
 import { agadirToIso, fmtDate, fmtTime, parseNum, str } from "@/lib/utils";
 import type { ClassBooking, Client, GroupClass } from "@/lib/types";
 import type { FormState } from "@/components/action-form";
@@ -65,6 +66,34 @@ async function promoteNext(supabase: SupabaseClient, cls: GroupClass) {
   }
 }
 
+/**
+ * Un cours collectif occupe le créneau de son coach : on applique les mêmes règles qu'aux séances
+ * (coach actif, disponibilités, congés, séances privées, autres cours, jamais dans le passé).
+ * Renvoie un message d'erreur, ou null si toutes les occurrences sont libres.
+ */
+async function checkClassSlots(supabase: SupabaseClient, coachId: string, starts: string[], durationMin: number, excludeClassId?: string | null) {
+  const bad = await checkActiveCoach(supabase as Awaited<ReturnType<typeof createClient>>, coachId);
+  if (bad) return bad;
+  const sorted = [...starts].sort();
+  const last = new Date(new Date(sorted.at(-1)!).getTime() + durationMin * 60000).toISOString();
+  const [data, { data: p }] = await Promise.all([
+    loadPlanningData(supabase, sorted[0]!, last, [coachId]),
+    supabase.from("profiles").select("full_name, email").eq("id", coachId).maybeSingle(),
+  ]);
+  const ids = [...new Set(data.sessions.map((s) => s.client_id))];
+  const { data: cl } = ids.length ? await supabase.from("clients").select("id, full_name").in("id", ids) : { data: [] };
+  const names = new Map(((cl ?? []) as { id: string; full_name: string }[]).map((c) => [c.id, c.full_name]));
+  const coach = p ? firstName(staffName(p as { full_name: string; email: string })) : undefined;
+  const now = Date.now();
+  for (const iso of sorted) {
+    const label = `${fmtDate(iso, { weekday: "short", day: "numeric", month: "short" })} à ${fmtTime(iso)}`;
+    if (new Date(iso).getTime() < now) return `Le cours du ${label} serait dans le passé.`;
+    const c = checkSlot(data, { coachId, startIso: iso, durationMin, excludeClassId }, { coach, client: (id) => names.get(id) });
+    if (!c.ok) return `Cours du ${label} : ${c.message}`;
+  }
+  return null;
+}
+
 async function getClass(supabase: SupabaseClient, id: string) {
   const { data } = await supabase.from("group_classes").select("*").eq("id", id).maybeSingle();
   return data as GroupClass | null;
@@ -96,7 +125,14 @@ export async function saveClassAction(_: FormState, fd: FormData): Promise<FormS
 
   if (id) {
     const before = await getClass(supabase, id);
-    const { error } = await supabase.from("group_classes").update({ ...row, starts_at: agadirToIso(date, time) }).eq("id", id);
+    if (!before) return fail("Cours introuvable.");
+    const starts_at = agadirToIso(date, time);
+    const moved = before.coach_id !== row.coach_id || before.starts_at !== starts_at || before.duration_min !== row.duration_min;
+    if (row.coach_id && moved && !before.cancelled) {
+      const err = await checkClassSlots(supabase, row.coach_id, [starts_at], duration, id);
+      if (err) return fail(err);
+    }
+    const { error } = await supabase.from("group_classes").update({ ...row, starts_at }).eq("id", id);
     if (error) return fail(error.message);
     // Capacité augmentée → on fait monter la liste d'attente
     const after = await getClass(supabase, id);
@@ -111,6 +147,10 @@ export async function saveClassAction(_: FormState, fd: FormData): Promise<FormS
     d.setUTCDate(d.getUTCDate() + i * 7);
     return { ...row, starts_at: agadirToIso(d.toISOString().slice(0, 10), time), cancelled: false };
   });
+  if (row.coach_id) {
+    const err = await checkClassSlots(supabase, row.coach_id, rows.map((r) => r.starts_at), duration);
+    if (err) return fail(err);
+  }
   const { data, error } = await supabase.from("group_classes").insert(rows).select("id");
   if (error) return fail(error.message);
   revalidateClasses();

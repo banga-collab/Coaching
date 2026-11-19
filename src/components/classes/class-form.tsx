@@ -8,7 +8,9 @@ import { saveClassAction } from "@/actions/classes";
 import { CATEGORY_NAMES, LEVELS, ROOMS, cat } from "./categories";
 import { RepeatField } from "./repeat-field";
 
-export function ClassForm({ coaches, initial, defaultDate, meId }: { coaches: Profile[]; initial?: GroupClass; defaultDate: string; meId: string }) {
+/** `coaches` : coachs ACTIFS uniquement (loadStaff). Un coach désactivé déjà attribué reste affiché pour ne pas le perdre. */
+export function ClassForm({ coaches, initial, defaultDate, meId }: { coaches: Pick<Profile, "id" | "full_name" | "email">[]; initial?: GroupClass; defaultDate: string; meId: string }) {
+  const keepInactive = !!initial?.coach_id && !coaches.some((p) => p.id === initial.coach_id);
   const at = initial ? isoToAgadir(initial.starts_at) : { date: defaultDate, time: "18:00" };
   return (
     <ActionForm action={saveClassAction}>
@@ -28,9 +30,10 @@ export function ClassForm({ coaches, initial, defaultDate, meId }: { coaches: Pr
                 ))}
               </Select>
             </Field>
-            <Field label="Coach">
+            <Field label="Coach" hint="Le créneau du coach est vérifié : disponibilités, congés, séances et autres cours.">
               <Select name="coach_id" defaultValue={initial?.coach_id ?? meId}>
                 <option value="">— Non attribué —</option>
+                {keepInactive && <option value={initial!.coach_id!}>Coach désactivé (à remplacer)</option>}
                 {coaches.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.full_name || p.email}

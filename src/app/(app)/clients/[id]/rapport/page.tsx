@@ -1,11 +1,12 @@
 import Image from "next/image";
+import { CalendarRange } from "lucide-react";
 import { notFound } from "next/navigation";
 import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { Client, HealthCheck, Measurement, Session } from "@/lib/types";
 import { fmtDate, num, signed } from "@/lib/utils";
 import { BackLink } from "@/components/back-link";
-import { Card, CardHeader } from "@/components/ui";
+import { Card, CardHeader, LinkButton } from "@/components/ui";
 import { ACCENT, BRAND, TrendChart } from "@/components/charts";
 import { PrintButton } from "@/components/print-button";
 
@@ -49,7 +50,12 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
     <div className="mx-auto max-w-4xl">
       <div className="no-print mb-4 flex items-center justify-between">
         <BackLink href={`/clients/${id}`} label={c.full_name} />
-        <PrintButton />
+        <div className="flex flex-wrap items-center gap-2">
+          <LinkButton href={`/rapports?client=${id}`} variant="secondary">
+            <CalendarRange className="size-4" /> Rapport par période
+          </LinkButton>
+          <PrintButton />
+        </div>
       </div>
       <div className="space-y-5 rounded-3xl bg-white p-6 shadow-card ring-1 ring-line sm:p-10 print:p-0 print:shadow-none print:ring-0">
         <header className="flex items-start justify-between gap-6 border-b-2 border-accent-500 pb-6">

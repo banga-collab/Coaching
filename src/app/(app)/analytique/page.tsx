@@ -5,28 +5,27 @@ import {
   CalendarCheck2,
   CalendarDays,
   Clock,
-  Crown,
   Download,
   FileSpreadsheet,
   HeartPulse,
+  Hourglass,
   PieChart as PieIcon,
   Ruler,
   Scale,
   Target,
-  TrendingUp,
   UserCheck,
+  UserPlus,
   Users,
-  Wallet,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireStaff } from "@/lib/auth";
-import type { Client, Goal, Invoice, Measurement, Profile, Session } from "@/lib/types";
+import type { Client, Goal, Measurement, Profile, Session } from "@/lib/types";
+import { BUSY_STATUSES } from "@/lib/planning";
 import { cn, dayKey, fmtDate, signed } from "@/lib/utils";
 import { Avatar, Badge, Card, CardHeader, Empty, Input, Kpi, PageHeader } from "@/components/ui";
-import { ActiveClientsLine, Donut, RevenueArea, StackedSessions } from "@/components/analytics/charts";
+import { ActiveClientsLine, Donut, StackedSessions } from "@/components/analytics/charts";
 
 const PERIODS = [3, 6, 12] as const;
-const mad = (v: number) => `${new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(Math.round(v))} MAD`;
 const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : null);
 
 const tzParts = new Intl.DateTimeFormat("en-US", { timeZone: "Africa/Casablanca", weekday: "short", hour: "numeric", hourCycle: "h23" });
@@ -56,17 +55,15 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const from = monthsAgo(now, months);
   const prevFrom = monthsAgo(now, months * 2);
 
-  const [{ data: cData }, { data: sData }, { data: iData }, { data: pData }, { data: gData }, { data: mData }] = await Promise.all([
+  const [{ data: cData }, { data: sData }, { data: pData }, { data: gData }, { data: mData }] = await Promise.all([
     supabase.from("clients").select("*").order("full_name"),
     supabase.from("sessions").select("*").gte("starts_at", prevFrom.toISOString()).order("starts_at").limit(10000),
-    supabase.from("invoices").select("*").order("issued_on").limit(10000),
-    supabase.from("profiles").select("*").in("role", ["coach", "admin"]).order("full_name"),
+    supabase.from("profiles").select("*").in("role", ["coach", "head_coach", "admin"]).order("full_name"),
     supabase.from("goals").select("*").limit(5000),
     supabase.from("measurements").select("*").order("measured_on", { ascending: true }).limit(10000),
   ]);
   const clients = (cData ?? []) as Client[];
   const sessions = (sData ?? []) as Session[];
-  const invoices = (iData ?? []) as Invoice[];
   const goals = (gData ?? []) as Goal[];
   const meas = (mData ?? []) as Measurement[];
   let coaches = (pData ?? []) as Profile[];
@@ -81,13 +78,10 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
     const t = new Date(iso).getTime();
     return t >= a.getTime() && t < b.getTime();
   };
-  const paid = invoices.filter((i) => i.status === "payee");
-  const paidDate = (i: Invoice) => i.paid_on ?? i.issued_on;
-  const paidCur = paid.filter((i) => inRange(paidDate(i), from, now));
-  const paidPrev = paid.filter((i) => inRange(paidDate(i), prevFrom, from));
-  const revenue = paidCur.reduce((a, i) => a + Number(i.amount_mad), 0);
-  const revenuePrev = paidPrev.reduce((a, i) => a + Number(i.amount_mad), 0);
-  const basket = paidCur.length ? revenue / paidCur.length : 0;
+  // Séances comptées : prévues (BUSY_STATUSES, comme le planning) + réalisées / absences. Ni annulées ni refusées.
+  const counted = (s: Session) => BUSY_STATUSES.includes(s.status) || s.status === "realisee" || s.status === "absent";
+  const newCur = clients.filter((c) => inRange(c.start_date, from, now)).length;
+  const newPrev = clients.filter((c) => inRange(c.start_date, prevFrom, from)).length;
 
   const sCur = sessions.filter((s) => inRange(s.starts_at, from, now));
   const sPrev = sessions.filter((s) => inRange(s.starts_at, prevFrom, from));
@@ -101,6 +95,9 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const recentIds = new Set(sessions.filter((s) => s.status === "realisee" && inRange(s.starts_at, d30, now)).map((s) => s.client_id));
   const retained = active.filter((c) => recentIds.has(c.id)).length;
   const retention = pct(retained, active.length);
+  const upcoming = sessions.filter((s) => BUSY_STATUSES.includes(s.status) && new Date(s.starts_at).getTime() >= now.getTime());
+  const d30Next = new Date(now.getTime() + 30 * 86400000);
+  const upcoming30 = upcoming.filter((s) => inRange(s.starts_at, now, d30Next));
 
   /* ---------- Séries mensuelles ---------- */
   const monthList = Array.from({ length: months }, (_, i) => {
@@ -110,16 +107,12 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
     return { key, label: label.charAt(0).toUpperCase() + label.slice(1) };
   });
   const monthOf = (iso: string) => dayKey(iso).slice(0, 7);
-  const revenueByMonth = monthList.map((m) => ({
-    label: m.label,
-    value: paid.filter((i) => paidDate(i).slice(0, 7) === m.key).reduce((a, i) => a + Number(i.amount_mad), 0),
-  }));
   const sessionsByMonth = monthList.map((m) => {
     const ms = sessions.filter((s) => monthOf(s.starts_at) === m.key);
     return {
       label: m.label,
       realisee: ms.filter((s) => s.status === "realisee").length,
-      planifiee: ms.filter((s) => s.status === "planifiee").length,
+      planifiee: ms.filter((s) => BUSY_STATUSES.includes(s.status)).length,
       absent: ms.filter((s) => s.status === "absent").length,
       annulee: ms.filter((s) => s.status === "annulee").length,
     };
@@ -131,7 +124,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
 
   /* ---------- Types de séance ---------- */
   const typeCount = new Map<string, number>();
-  sCur.filter((s) => s.status !== "annulee").forEach((s) => typeCount.set(s.type, (typeCount.get(s.type) ?? 0) + 1));
+  sCur.filter(counted).forEach((s) => typeCount.set(s.type, (typeCount.get(s.type) ?? 0) + 1));
   const sorted = [...typeCount.entries()].sort((a, b) => b[1] - a[1]);
   const byType = sorted.slice(0, 6).map(([label, value]) => ({ label, value }));
   const rest = sorted.slice(6).reduce((a, [, v]) => a + v, 0);
@@ -160,29 +153,24 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const coachRows = coaches
     .map((c) => {
       const cl = clients.filter((x) => x.coach_id === c.id);
-      const ids = new Set(cl.map((x) => x.id));
       const cs = sCur.filter((s) => s.coach_id === c.id);
       const r = cs.filter((s) => s.status === "realisee").length;
       const a = cs.filter((s) => s.status === "absent").length;
-      const rev = paidCur.filter((i) => ids.has(i.client_id)).reduce((acc, i) => acc + Number(i.amount_mad), 0);
-      return { c, clients: cl.filter((x) => x.status === "actif").length, total: cl.length, sessions: r, attendance: pct(r, r + a), revenue: rev };
+      const next = upcoming30.filter((s) => s.coach_id === c.id).length;
+      return { c, clients: cl.filter((x) => x.status === "actif").length, total: cl.length, sessions: r, attendance: pct(r, r + a), next };
     })
-    .sort((a, b) => b.revenue - a.revenue || b.sessions - a.sessions);
+    .sort((a, b) => b.sessions - a.sessions || b.next - a.next);
+  const nextMax = Math.max(1, ...coachRows.map((r) => r.next));
 
-  /* ---------- LTV ---------- */
-  const ltv = new Map<string, { total: number; count: number }>();
-  paid.forEach((i) => {
-    const e = ltv.get(i.client_id) ?? { total: 0, count: 0 };
-    e.total += Number(i.amount_mad);
-    e.count++;
-    ltv.set(i.client_id, e);
-  });
-  const topClients = [...ltv.entries()]
-    .map(([id, v]) => ({ c: clientById.get(id), ...v }))
-    .filter((x): x is { c: Client; total: number; count: number } => !!x.c)
-    .sort((a, b) => b.total - a.total)
+  /* ---------- Clients les plus assidus ---------- */
+  const doneByClient = new Map<string, number>();
+  done.forEach((x) => doneByClient.set(x.client_id, (doneByClient.get(x.client_id) ?? 0) + 1));
+  const topClients = [...doneByClient.entries()]
+    .map(([id, count]) => ({ c: clientById.get(id), count }))
+    .filter((x): x is { c: Client; count: number } => !!x.c)
+    .sort((a, b) => b.count - a.count)
     .slice(0, 6);
-  const topMax = topClients[0]?.total ?? 1;
+  const topMax = topClients[0]?.count ?? 1;
 
   /* ---------- Objectifs & poids ---------- */
   const myGoals = goals.filter((g) => clientById.has(g.client_id));
@@ -201,7 +189,6 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
     .filter((x): x is number => x !== null);
   const avgWeight = weightDeltas.length ? weightDeltas.reduce((a, b) => a + b, 0) / weightDeltas.length : null;
 
-  const revDelta = revenue - revenuePrev;
   const attDelta = attendance !== null && attendancePrev !== null ? attendance - attendancePrev : null;
   const periodLabel = `${months} derniers mois`;
   const today = dayKey(now);
@@ -210,7 +197,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
     <>
       <PageHeader
         title="Analytique"
-        subtitle={`${me.role === "admin" ? "Toute la salle" : "Tes clients"} · du ${fmtDate(from)} au ${fmtDate(now)}`}
+        subtitle={`${me.role === "coach" ? "Tes clients" : "Toute la salle"} · du ${fmtDate(from)} au ${fmtDate(now)}`}
         actions={
           <div className="flex gap-1 rounded-xl bg-white p-1 ring-1 ring-line">
             {PERIODS.map((m) => (
@@ -228,7 +215,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
 
       {/* KPI */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 2xl:grid-cols-6">
-        <Kpi label="CA encaissé" value={mad(revenue)} delta={deltaText(revenue, revenuePrev)} positive={revenuePrev ? revDelta >= 0 : undefined} icon={<Wallet className="size-[18px]" />} />
+        <Kpi label="Nouveaux clients" value={newCur} delta={deltaText(newCur, newPrev)} positive={newPrev ? newCur >= newPrev : undefined} icon={<UserPlus className="size-[18px]" />} />
         <Kpi tone="accent" label="Clients actifs" value={active.length} delta={`${clients.length} au total`} icon={<Users className="size-[18px]" />} />
         <Kpi
           label="Taux de présence"
@@ -238,18 +225,12 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
           icon={<CalendarCheck2 className="size-[18px]" />}
         />
         <Kpi tone="accent" label="Séances réalisées" value={done.length} delta={deltaText(done.length, donePrev)} positive={donePrev ? done.length >= donePrev : undefined} icon={<Activity className="size-[18px]" />} />
-        <Kpi label="Panier moyen" value={paidCur.length ? mad(basket) : "–"} delta={`${paidCur.length} facture${paidCur.length > 1 ? "s" : ""} payée${paidCur.length > 1 ? "s" : ""}`} icon={<TrendingUp className="size-[18px]" />} />
+        <Kpi label="Séances à venir" value={upcoming30.length} delta={`30 prochains jours · ${upcoming.length} au total`} icon={<Hourglass className="size-[18px]" />} />
         <Kpi tone="accent" label="Taux de rétention" value={retention === null ? "–" : `${retention} %`} delta={`${retained}/${active.length} venus ces 30 j`} positive={retention === null ? undefined : retention >= 70} icon={<UserCheck className="size-[18px]" />} />
       </div>
 
-      {/* Revenus + séances */}
+      {/* Séances + clients actifs */}
       <div className="mt-5 grid gap-5 xl:grid-cols-2">
-        <Card>
-          <CardHeader title="Chiffre d'affaires encaissé" subtitle={`Par mois · ${periodLabel}`} icon={<Wallet className="size-4" />} action={<Badge tone="brand">{mad(revenueByMonth.reduce((a, m) => a + m.value, 0))}</Badge>} />
-          <div className="px-3 pb-4">
-            {revenueByMonth.some((m) => m.value) ? <RevenueArea data={revenueByMonth} /> : <Empty icon={<Wallet className="size-6" />} title="Aucun encaissement" text="Les factures marquées payées apparaîtront ici." />}
-          </div>
-        </Card>
         <Card>
           <CardHeader title="Séances par mois" subtitle="Par statut" icon={<CalendarDays className="size-4" />} />
           <div className="px-3 pb-4">
@@ -260,19 +241,10 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
             )}
           </div>
         </Card>
-      </div>
-
-      <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_1.15fr]">
         <Card>
           <CardHeader title="Clients actifs dans le temps" subtitle="Au moins une séance réalisée dans le mois" icon={<Users className="size-4" />} />
           <div className="px-3 pb-4">
             <ActiveClientsLine data={activeByMonth} />
-          </div>
-        </Card>
-        <Card>
-          <CardHeader title="Séances par type" subtitle={periodLabel} icon={<PieIcon className="size-4" />} />
-          <div className="px-5 pb-5">
-            {byType.length ? <Donut data={byType} centerLabel="séances" /> : <Empty icon={<PieIcon className="size-6" />} title="Pas encore de séances" text="La répartition par type s'affichera dès les premières séances." />}
           </div>
         </Card>
       </div>
@@ -329,7 +301,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
         <Card className="overflow-hidden">
           <CardHeader title="Performance par coach" subtitle={periodLabel} icon={<BarChart3 className="size-4" />} />
           {coachRows.length === 0 ? (
-            <Empty icon={<Users className="size-6" />} title="Aucun coach" text="Ajoute des coachs depuis la page Équipe." />
+            <Empty icon={<Users className="size-6" />} title="Aucun coach" text="Ajoute des coachs depuis l'espace admin." />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[520px] text-sm">
@@ -339,7 +311,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
                     <th className="px-4 py-3 text-right">Clients actifs</th>
                     <th className="px-4 py-3 text-right">Séances</th>
                     <th className="px-4 py-3">Présence</th>
-                    <th className="px-5 py-3 text-right">CA</th>
+                    <th className="px-5 py-3">Charge à 30 j</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
@@ -368,7 +340,14 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
                           </span>
                         )}
                       </td>
-                      <td className="px-5 py-3 text-right font-display font-bold text-brand-600">{mad(r.revenue)}</td>
+                      <td className="px-5 py-3">
+                        <span className="flex items-center gap-2">
+                          <span className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100">
+                            <span className="block h-full rounded-full bg-brand-400" style={{ width: `${(r.next / nextMax) * 100}%` }} />
+                          </span>
+                          <span className="text-xs font-semibold text-slate-600">{r.next}</span>
+                        </span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -378,9 +357,19 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
         </Card>
 
         <Card>
-          <CardHeader title="Meilleurs clients" subtitle="Valeur vie client (factures payées)" icon={<Crown className="size-4" />} />
+          <CardHeader title="Séances par type" subtitle={periodLabel} icon={<PieIcon className="size-4" />} />
+          <div className="px-5 pb-5">
+            {byType.length ? <Donut data={byType} centerLabel="séances" /> : <Empty icon={<PieIcon className="size-6" />} title="Pas encore de séances" text="La répartition par type s'affichera dès les premières séances." />}
+          </div>
+        </Card>
+      </div>
+
+      {/* Assiduité + objectifs + poids */}
+      <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <Card className="md:col-span-2 xl:col-span-1">
+          <CardHeader title="Clients les plus assidus" subtitle={`Séances réalisées · ${periodLabel}`} icon={<Activity className="size-4" />} />
           {topClients.length === 0 ? (
-            <Empty icon={<Crown className="size-6" />} title="Pas encore de revenus" text="Le classement apparaîtra après les premières factures payées." />
+            <Empty icon={<Activity className="size-6" />} title="Pas encore de séances réalisées" text="Le classement apparaîtra après les premières séances réalisées." />
           ) : (
             <ul className="space-y-1 px-2 pb-3">
               {topClients.map((t, i) => (
@@ -391,13 +380,12 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline justify-between gap-2">
                         <span className="truncate text-sm font-semibold">{t.c.full_name}</span>
-                        <b className="shrink-0 font-display text-sm text-brand-600">{mad(t.total)}</b>
+                        <b className="shrink-0 font-display text-sm text-brand-600">
+                          {t.count} séance{t.count > 1 ? "s" : ""}
+                        </b>
                       </span>
-                      <span className="mt-1 flex items-center gap-2">
-                        <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
-                          <span className="block h-full rounded-full bg-brand-400" style={{ width: `${(t.total / topMax) * 100}%` }} />
-                        </span>
-                        <span className="text-[11px] text-muted">{t.count} fact.</span>
+                      <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-slate-100">
+                        <span className="block h-full rounded-full bg-brand-400" style={{ width: `${(t.count / topMax) * 100}%` }} />
                       </span>
                     </span>
                   </Link>
@@ -406,10 +394,6 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
             </ul>
           )}
         </Card>
-      </div>
-
-      {/* Objectifs + poids */}
-      <div className="mt-5 grid gap-5 md:grid-cols-2">
         <Card>
           <CardHeader title="Objectifs" subtitle="Tous les objectifs suivis" icon={<Target className="size-4" />} />
           <div className="px-5 pb-5">
@@ -469,13 +453,12 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
             </label>
           </div>
           <p className="mt-2 text-xs text-muted">Sans dates, tout l&apos;historique est exporté. Pour les clients, la période porte sur la date de début.</p>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {[
               { kind: "clients", label: "Clients", icon: Users },
               { kind: "seances", label: "Séances", icon: CalendarDays },
               { kind: "mesures", label: "Mesures", icon: Ruler },
               { kind: "bilans", label: "Bilans de santé", icon: HeartPulse },
-              { kind: "factures", label: "Factures", icon: Wallet },
             ].map((k) => (
               <button
                 key={k.kind}

@@ -1,7 +1,10 @@
 import Image from "next/image";
 import { Activity, HeartPulse, LineChart } from "lucide-react";
+import { getT } from "@/lib/i18n";
+import { LangSwitcher, ThemeToggle } from "@/components/shell/controls";
 
-export default function AuthLayout({ children }: { children: React.ReactNode }) {
+export default async function AuthLayout({ children }: { children: React.ReactNode }) {
+  const t = await getT();
   return (
     <div className="grid min-h-dvh lg:grid-cols-[1.05fr_1fr]">
       {/* Panneau de marque */}
@@ -10,21 +13,21 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <Pixels />
         <div className="relative">
           <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold ring-1 ring-white/20 backdrop-blur">
-            <span className="size-1.5 rounded-full bg-accent-400" /> Complexe Moov&apos;Up Sports · Agadir
+            <span className="size-1.5 rounded-full bg-accent-400" /> {t("auth.place")}
           </span>
         </div>
         <div className="relative max-w-md">
           <h2 className="font-display text-4xl font-extrabold leading-tight tracking-tight">
-            Chaque séance compte.
+            {t("auth.headline1")}
             <br />
-            <span className="text-accent-400">Chaque progrès se voit.</span>
+            <span className="text-accent-400">{t("auth.headline2")}</span>
           </h2>
-          <p className="mt-4 text-brand-100/90">L&apos;espace des coachs et des adhérents pour suivre les entraînements, la progression et la santé.</p>
+          <p className="mt-4 text-brand-100/90">{t("auth.intro")}</p>
           <ul className="mt-10 space-y-4 text-sm">
             {[
-              [Activity, "Séances et programmes détaillés"],
-              [LineChart, "Courbes de progression automatiques"],
-              [HeartPulse, "Bilans de santé et alertes"],
+              [Activity, t("auth.f1")],
+              [LineChart, t("auth.f2")],
+              [HeartPulse, t("auth.f3")],
             ].map(([Icon, label], i) => {
               const I = Icon as typeof Activity;
               return (
@@ -42,7 +45,11 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       </aside>
 
       {/* Formulaire */}
-      <main className="flex flex-col items-center justify-center bg-white px-5 py-10 sm:px-10">
+      <main className="relative flex flex-col items-center justify-center bg-white px-5 py-10 sm:px-10">
+        <div className="absolute end-4 top-4 flex items-center gap-2">
+          <ThemeToggle />
+          <LangSwitcher />
+        </div>
         <div className="w-full max-w-[400px] animate-fade-up">
           <Image src="/logo.png" alt="Complexe Moov'Up Sports" width={473} height={136} priority className="mx-auto mb-10 h-auto w-56" />
           {children}
@@ -62,7 +69,7 @@ function Pixels() {
     return <rect key={i} x={`${x}%`} y={`${y}%`} width={s} height={s} fill={c} opacity={0.55} transform={`rotate(${(i * 13) % 30})`} />;
   });
   return (
-    <svg className="absolute inset-y-0 right-0 h-full w-2/3 opacity-60 [mask-image:linear-gradient(to_left,black,transparent)]" aria-hidden>
+    <svg className="absolute inset-y-0 end-0 h-full w-2/3 opacity-60 [mask-image:linear-gradient(to_left,black,transparent)]" aria-hidden>
       {cells}
     </svg>
   );

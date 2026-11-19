@@ -71,7 +71,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
           <Empty
             icon={<BellOff className="size-6" />}
             title={unreadOnly ? "Aucune notification non lue" : "Aucune notification"}
-            text={unreadOnly ? "Tout est à jour." : "Messages, paiements, réservations et alertes apparaîtront ici."}
+            text={unreadOnly ? "Tout est à jour." : "Messages, séances, réservations et alertes apparaîtront ici."}
           />
         </Card>
       ) : (

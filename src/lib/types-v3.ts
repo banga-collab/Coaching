@@ -72,39 +72,12 @@ export interface ProgressPhoto {
   created_at: string;
 }
 
-export interface Membership {
-  id: string;
-  client_id: string;
-  package_id: string | null;
-  name: string;
-  start_date: string;
-  end_date: string;
-  sessions_total: number | null;
-  sessions_used: number;
-  price_mad: number | null;
-  status: "actif" | "suspendu" | "annule";
-  auto_renew: boolean;
-  created_at: string;
-}
-
 export interface GymCheckin {
   id: string;
   client_id: string;
   checked_at: string;
   method: "qr" | "manuel" | "code";
   created_by: string | null;
-}
-
-export interface OnlinePayment {
-  id: string;
-  invoice_id: string;
-  client_id: string;
-  provider: "stripe" | "cmi" | "demo";
-  provider_ref: string | null;
-  amount_mad: number;
-  status: "en_attente" | "reussi" | "echoue";
-  created_at: string;
-  paid_at: string | null;
 }
 
 export interface WhatsAppMessage {
@@ -204,16 +177,5 @@ export interface WorkoutLog {
   entries: WorkoutEntry[];
   rpe: number | null;
   notes: string | null;
-  created_at: string;
-}
-
-export interface Referral {
-  id: string;
-  referrer_client_id: string;
-  referred_name: string;
-  referred_phone: string | null;
-  referred_client_id: string | null;
-  status: "en_attente" | "inscrit" | "recompense";
-  reward_mad: number | null;
   created_at: string;
 }

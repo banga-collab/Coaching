@@ -6,18 +6,27 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { seedExtra } from "./demo-extra";
 import { seedV3 } from "./demo-v3";
+import { seedPlanning } from "./demo-planning";
+import { seedBilan } from "./demo-bilan";
+import { seedReclamations } from "./demo-reclamations";
+import { seedControle } from "./demo-controle";
 import { agadirToIso } from "./utils";
 
 export const DEMO = process.env.NEXT_PUBLIC_DEMO === "1";
 export const DEMO_ADMIN = "00000000-0000-4000-8000-000000000001";
 export const DEMO_CLIENT_USER = "00000000-0000-4000-8000-000000000002";
 export const DEMO_COACH = "00000000-0000-4000-8000-000000000003";
+export const DEMO_HEAD = "00000000-0000-4000-8000-000000000004";
+export const DEMO_COACH2 = "00000000-0000-4000-8000-000000000005";
 
 /** Comptes de démonstration (données fictives, mode démo uniquement) */
 export const DEMO_ACCOUNTS = [
-  { email: "admin@moovup.ma", password: "moovup2026", userId: DEMO_ADMIN, label: "Administrateur", name: "Yassine Moov'Up", space: "Espace coach (accès complet)" },
+  { email: "admin@moovup.ma", password: "moovup2026", userId: DEMO_ADMIN, label: "Administrateur", name: "Yassine Moov'Up", space: "Espace coach + espace admin" },
+  { email: "rachid@moovup.ma", password: "head2026", userId: DEMO_HEAD, label: "Head coach", name: "Rachid Amrani", space: "Planning de l'équipe" },
   { email: "sara@moovup.ma", password: "coach2026", userId: DEMO_COACH, label: "Coach", name: "Sara El Idrissi", space: "Espace coach" },
   { email: "karim@example.com", password: "adherent2026", userId: DEMO_CLIENT_USER, label: "Adhérent", name: "Karim El Amrani", space: "Espace adhérent" },
+  { email: "imane@example.com", password: "lady2026", userId: "00000000-0000-4000-8000-000000000007", label: "Adhérente Lady", name: "Imane Chraibi", space: "Espace adhérente (Moov'Up Lady)" },
+  { email: "houda@moovup.ma", password: "lady2026", userId: "00000000-0000-4000-8000-000000000006", label: "Coach Lady", name: "Houda Benali", space: "Espace coach (Moov'Up Lady)" },
 ];
 
 type Row = Record<string, any>;
@@ -42,8 +51,10 @@ function seed(): DB {
   seq = 100;
   const coach2 = "00000000-0000-4000-8000-000000000003";
   const profiles = [
-    { id: DEMO_ADMIN, full_name: "Yassine Moov'Up", email: "admin@moovup.ma", role: "admin", created_at: day(-200) },
-    { id: coach2, full_name: "Sara El Idrissi", email: "sara@moovup.ma", role: "coach", created_at: day(-150) },
+    { id: DEMO_ADMIN, full_name: "Yassine Moov'Up", email: "admin@moovup.ma", role: "admin", created_at: day(-200), phone: "06 61 00 00 01", active: true, coach_pct: 0, sales_pct: 0, specialties: ["Musculation", "Perte de poids"] },
+    { id: DEMO_HEAD, full_name: "Rachid Amrani", email: "rachid@moovup.ma", role: "head_coach", created_at: day(-190), phone: "06 61 00 00 04", active: true, coach_pct: 45, sales_pct: 10, specialties: ["Préparation physique", "Musculation"] },
+    { id: coach2, full_name: "Sara El Idrissi", email: "sara@moovup.ma", role: "coach", created_at: day(-150), phone: "06 61 00 00 03", active: true, coach_pct: 40, sales_pct: 10, specialties: ["Mobilité", "Remise en forme", "Pilates"] },
+    { id: DEMO_COACH2, full_name: "Anas Ouazzani", email: "anas@moovup.ma", role: "coach", created_at: day(-90), phone: "06 61 00 00 05", active: true, coach_pct: 35, sales_pct: 8, specialties: ["Cardio / HIIT", "Boxe"] },
     { id: DEMO_CLIENT_USER, full_name: "Karim El Amrani", email: "karim@example.com", role: "client", created_at: day(-160) },
     { id: uid(), full_name: "Hamza Berrada", email: "hamza@example.com", role: "client", created_at: day(-3) },
   ];
@@ -214,13 +225,19 @@ function seed(): DB {
 
   const base: DB = { profiles, clients, measurements, health_checks, sessions, session_exercises };
   const withExtra: DB = { ...base, ...seedExtra(base, uid) };
-  return { ...withExtra, ...seedV3(withExtra, uid) };
+  let all: DB = { ...withExtra, ...seedV3(withExtra, uid) };
+  // Modules V5 (chacun dans son fichier : planning, bilan sportif)
+  all = { ...all, ...seedPlanning(all, uid) };
+  all = { ...all, ...seedBilan(all, uid) };
+  all = { ...all, ...seedReclamations(all, uid) };
+  all = { ...all, ...seedControle(all, uid) };
+  return all;
 }
 
-const g = globalThis as unknown as { __moovupDemoV7?: DB };
+const g = globalThis as unknown as { __moovupDemoV11?: DB };
 export function demoDb(): DB {
-  if (!g.__moovupDemoV7) g.__moovupDemoV7 = seed();
-  return g.__moovupDemoV7;
+  if (!g.__moovupDemoV11) g.__moovupDemoV11 = seed();
+  return g.__moovupDemoV11;
 }
 
 /* ---------- Faux constructeur de requêtes ---------- */

@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* La variante dark: suit la classe « dark » posée sur <html> (bouton de l'en-tête, cookie « theme ») */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ===== Charte Moov'Up Sports ===== */
 @theme {
   --color-brand-50: #eef6f9;
@@ -40,6 +43,145 @@
   }
 }
 
+/* ===== Arabe : police lisible et de droite à gauche ===== */
+html[lang="ar"] {
+  --font-sans: var(--font-arabic), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-arabic), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+html[lang="ar"] body { letter-spacing: 0; }
+
+/* ===== Mode sombre =====
+ * Les pages utilisent les couleurs du thème (bg-white, bg-canvas, text-ink, slate-*, brand-*…).
+ * On redéfinit ces variables sous .dark : toutes les pages passent en sombre sans être modifiées.
+ * Contraste vérifié (AA) : texte principal ≈ 14:1, texte secondaire ≈ 6,5:1, teintes -600/-700 ≥ 4,5:1 sur les surfaces.
+ */
+@media screen {
+  .dark {
+    color-scheme: dark;
+
+    /* Surfaces et texte */
+    --color-white: #171c24;
+    --color-canvas: #0e1116;
+    --color-ink: #e7ebf0;
+    --color-muted: #9ba5b3;
+    --color-line: #2a313c;
+
+    /* Gris : échelle inversée (50 = survol discret, 900 = texte le plus clair) */
+    --color-slate-50: #1d232c;
+    --color-slate-100: #252c37;
+    --color-slate-200: #2f3743;
+    --color-slate-300: #414b59;
+    --color-slate-400: #7f8a99;
+    --color-slate-500: #98a2b0;
+    --color-slate-600: #b3bcc8;
+    --color-slate-700: #c8d0da;
+    --color-slate-800: #dce2e9;
+    --color-slate-900: #eef1f5;
+
+    /* Bleu Moov'Up */
+    --color-brand-50: #11252f;
+    --color-brand-100: #15303d;
+    --color-brand-200: #1c4357;
+    --color-brand-300: #2f6a84;
+    --color-brand-600: #6db4d1;
+    --color-brand-700: #8cc5dc;
+    --color-brand-800: #acd6e7;
+    --color-brand-900: #d2e9f2;
+
+    /* Orange */
+    --color-accent-50: #2a1b10;
+    --color-accent-100: #3a2414;
+    --color-accent-200: #5a361b;
+    --color-accent-300: #8a5326;
+    --color-accent-600: #f2a066;
+    --color-accent-700: #f6b98c;
+
+    /* Vert */
+    --color-emerald-50: #0e2720;
+    --color-emerald-100: #11352a;
+    --color-emerald-200: #18493a;
+    --color-emerald-600: #3fd09b;
+    --color-emerald-700: #6ee2b6;
+    --color-emerald-800: #a3eed2;
+    --color-emerald-900: #cff7e7;
+
+    /* Ambre */
+    --color-amber-50: #2a210c;
+    --color-amber-100: #382c0f;
+    --color-amber-200: #544214;
+    --color-amber-600: #f5b83d;
+    --color-amber-700: #f8c96a;
+    --color-amber-800: #fbdc99;
+    --color-amber-900: #fdecc6;
+
+    /* Rouge */
+    --color-red-50: #2e1517;
+    --color-red-100: #3c1a1d;
+    --color-red-200: #5a2429;
+    --color-red-300: #7d3037;
+    --color-red-600: #f77c7c;
+    --color-red-700: #fa9e9e;
+    --color-red-800: #fcc3c3;
+    --color-red-900: #fde0e0;
+
+    /* Violet, ciel, sarcelle (avatars, badges) */
+    --color-violet-50: #1f1a33;
+    --color-violet-100: #292143;
+    --color-violet-200: #3a2f5e;
+    --color-violet-600: #ad97fb;
+    --color-violet-700: #c3b4fd;
+    --color-sky-50: #0e2433;
+    --color-sky-100: #112e42;
+    --color-sky-200: #183f5a;
+    --color-sky-600: #4fc0f2;
+    --color-sky-700: #84d3f7;
+    --color-teal-50: #0d2827;
+    --color-teal-100: #103534;
+    --color-teal-200: #164a48;
+    --color-teal-600: #3fcfbf;
+    --color-teal-700: #72e0d3;
+
+    /* Teintes secondaires du design coloré */
+    --color-orange-50: #2b1a0e;
+    --color-orange-100: #3a2312;
+    --color-orange-600: #f6a05f;
+    --color-orange-700: #f9b885;
+    --color-rose-50: #2e1520;
+    --color-rose-100: #3d1a2a;
+    --color-rose-600: #f78fb0;
+    --color-rose-700: #fab0c8;
+    --color-fuchsia-50: #2b1430;
+    --color-fuchsia-100: #3a1a41;
+    --color-fuchsia-600: #e98ef5;
+    --color-fuchsia-700: #f0b0f8;
+    --color-pink-50: #2e1524;
+    --color-pink-600: #f78fc4;
+    --color-lime-50: #1d2610;
+    --color-lime-600: #a8e05a;
+
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-pop: 0 12px 32px -12px rgb(0 0 0 / 0.6), 0 2px 6px -2px rgb(0 0 0 / 0.4);
+  }
+}
+
+/* Cas particuliers du mode sombre : texte blanc sur fond coloré, boutons foncés, voiles */
+@layer utilities {
+  @media screen {
+    .dark .text-white { color: #fff; }
+    .dark .bg-ink { background-color: #343e4c; }
+    .dark .hover\:bg-slate-800:hover { background-color: #435061; }
+    .dark .bg-ink\/30, .dark .bg-slate-900\/20 { background-color: rgb(0 0 0 / 0.55); }
+    .dark .bg-slate-900 { background-color: #05070a; }
+    .dark .bg-slate-800 { background-color: #1d232c; }
+    .dark .bg-brand-600, .dark .hover\:bg-brand-600:hover { background-color: #155a76; }
+    .dark .bg-brand-700 { background-color: #12495f; }
+    .dark .bg-accent-600, .dark .hover\:bg-accent-600:hover { background-color: #c9611a; }
+    .dark .text-brand-500 { color: #5aa7c7; }
+    .dark .border-brand-500 { border-color: #3f8fae; }
+    .dark img[src*="logo.png"] { filter: brightness(1.55) contrast(0.95); }
+  }
+}
+
 html { -webkit-tap-highlight-color: transparent; }
 body {
   background: var(--color-canvas);
@@ -53,6 +195,8 @@ input[type="range"] { accent-color: var(--color-accent-500); }
 
 /* Scrollbars discrètes */
 * { scrollbar-width: thin; scrollbar-color: #cfd6dd transparent; }
+.dark * { scrollbar-color: #414b59 transparent; }
+html[lang="ar"] body { font-feature-settings: normal; letter-spacing: 0; }
 
 @media print {
   body { background: #fff; }

@@ -1,6 +1,13 @@
-export type Role = "admin" | "coach" | "client";
+/** head_coach : coach qui répartit les séances entre les coachs (planning de l'équipe). */
+export type Role = "admin" | "head_coach" | "coach" | "client";
 export type ClientStatus = "actif" | "pause" | "termine";
-export type SessionStatus = "planifiee" | "realisee" | "absent" | "annulee";
+/**
+ * Cycle d'une séance :
+ * planifiee (attend la réponse du coach) → acceptee | refusee | reportee (nouvel horaire proposé)
+ * acceptee → en_cours (bouton « Séance démarrée ») → realisee (bouton « Séance terminée »)
+ * À tout moment : absent, annulee.
+ */
+export type SessionStatus = "planifiee" | "acceptee" | "refusee" | "reportee" | "en_cours" | "realisee" | "absent" | "annulee";
 export type CheckKind = "initial" | "mensuel" | "hebdo";
 
 export interface Profile {
@@ -8,6 +15,41 @@ export interface Profile {
   full_name: string;
   email: string;
   role: Role;
+  created_at: string;
+  phone?: string | null;
+  /** Compte désactivé (ancien coach) */
+  active?: boolean | null;
+  /** Ancienne colonne (commissions) : plus utilisée par l'app coaching */
+  coach_pct?: number | null;
+  /** Ancienne colonne (commissions) : plus utilisée par l'app coaching */
+  sales_pct?: number | null;
+  specialties?: string[] | null;
+  /** Espace de travail : « mixte » (par défaut) ou « lady » (Moov'Up Lady, 100 % femmes) */
+  espace?: Espace | null;
+}
+
+export type Espace = "mixte" | "lady";
+
+/** Pointage d'un coach à la borne de l'accueil (écrit par le serveur seulement) */
+export interface CoachPointage {
+  id: string;
+  coach_id: string;
+  espace: Espace;
+  kind: "arrivee" | "depart";
+  at: string;
+  method: "qr" | "code";
+  created_at: string;
+}
+
+/** Confirmation + avis de la cliente sur une séance réalisée (lu par la direction, jamais par les coachs) */
+export interface SessionFeedback {
+  id: string;
+  session_id: string;
+  client_id: string;
+  coach_id: string;
+  happened: boolean;
+  rating: number | null;
+  comment: string | null;
   created_at: string;
 }
 
@@ -27,8 +69,6 @@ export interface Client {
   start_date: string;
   notes: string | null;
   created_at: string;
-  access_code?: string | null;
-  referral_code?: string | null;
 }
 
 export interface Session {
@@ -41,6 +81,18 @@ export interface Session {
   status: SessionStatus;
   rpe: number | null;
   notes: string | null;
+  /** Qui a affecté la séance au coach (head coach / admin) */
+  assigned_by?: string | null;
+  /** Réponse du coach : date et motif (refus, report) */
+  responded_at?: string | null;
+  response_note?: string | null;
+  /** Nouvel horaire proposé quand le coach reporte */
+  proposed_at?: string | null;
+  /** Heures réelles (boutons Démarrer / Terminer) */
+  started_at?: string | null;
+  ended_at?: string | null;
+  /** Prix indicatif de la séance (information seulement : l'encaissement est géré par le CRM général) */
+  price_mad?: number | null;
 }
 
 export interface SessionExercise {
@@ -115,9 +167,6 @@ export interface Settings {
   booking_hours: { start: string; end: string; days: number[]; slot: number };
   calendar_token: string;
   webhook_url: string | null;
-  payment_provider?: "stripe" | "cmi" | "aucun";
-  referral_reward_mad?: number;
-  referral_discount_pct?: number;
   whatsapp_enabled?: boolean;
 }
 
@@ -245,41 +294,9 @@ export interface Notification {
   title: string;
   body: string | null;
   link: string | null;
+  /** « paiement » : anciennes notifications uniquement (plus créées par l'app de coaching) */
   kind: "info" | "alerte" | "message" | "paiement" | "reservation" | "tache";
   read: boolean;
-  created_at: string;
-}
-
-export interface Package {
-  id: string;
-  name: string;
-  description: string | null;
-  price_mad: number;
-  sessions_count: number | null;
-  duration_days: number | null;
-  active: boolean;
-  created_at: string;
-}
-
-export interface InvoiceLine {
-  label: string;
-  qty: number;
-  unit_price: number;
-}
-export interface Invoice {
-  id: string;
-  number: string;
-  client_id: string;
-  package_id: string | null;
-  lines: InvoiceLine[];
-  amount_mad: number;
-  issued_on: string;
-  due_on: string | null;
-  status: "brouillon" | "envoyee" | "payee" | "annulee";
-  paid_on: string | null;
-  method: string | null;
-  notes: string | null;
-  created_by: string | null;
   created_at: string;
 }
 
@@ -300,13 +317,10 @@ export type AutomationId =
   | "checkin_reminder"
   | "health_check_due"
   | "absence_followup"
-  | "invoice_overdue"
   | "goal_reached"
   | "inactive_client"
   | "wa_session_reminder"
-  | "wa_invoice_overdue"
-  | "wa_checkin_missing"
-  | "membership_expiring";
+  | "wa_checkin_missing";
 export interface Automation {
   id: AutomationId;
   enabled: boolean;
@@ -316,3 +330,5 @@ export interface Automation {
 }
 
 export * from "./types-v3";
+export * from "./types-planning";
+export * from "./types-bilan";

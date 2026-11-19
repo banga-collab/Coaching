@@ -1,19 +1,25 @@
 import Link from "next/link";
+import { AgendaTabs } from "@/components/planning/agenda-tabs";
 import { CalendarDays, CalendarPlus, CheckCircle2, ChevronLeft, ChevronRight, Hourglass, Percent, UsersRound } from "lucide-react";
 import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { ClassBooking, GroupClass, Profile } from "@/lib/types";
 import { cn, dayKey, fmtDate } from "@/lib/utils";
+import { normName } from "@/lib/video";
 import { Card, Empty, Kpi, LinkButton, PageHeader, buttonClass } from "@/components/ui";
 import { ClassCard } from "@/components/classes/class-card";
+import { ListToolbar } from "@/components/list-toolbar";
+import { Fold } from "@/components/fold";
 import { CATEGORY_NAMES, addDayKey, cat, classDay, classStats, isDayKey, mondayOf, rangeIso, weekdayIndex } from "@/components/classes/categories";
 
 export const metadata = { title: "Cours collectifs" };
 
 const DAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
-export default async function ClassesPage({ searchParams }: { searchParams: Promise<{ semaine?: string; jour?: string; cree?: string }> }) {
-  const [{ semaine, jour, cree }] = await Promise.all([searchParams, requireStaff()]);
+type SP = { semaine?: string; jour?: string; cree?: string; q?: string; categorie?: string; coach?: string };
+
+export default async function ClassesPage({ searchParams }: { searchParams: Promise<SP> }) {
+  const [{ semaine, jour, cree, q = "", categorie = "", coach = "" }] = await Promise.all([searchParams, requireStaff()]);
   const today = dayKey(new Date());
   const monday = mondayOf(isDayKey(semaine) ? semaine : today);
   const days = Array.from({ length: 7 }, (_, i) => addDayKey(monday, i));
@@ -24,28 +30,73 @@ export default async function ClassesPage({ searchParams }: { searchParams: Prom
   const { from, to } = rangeIso(monday, 7);
   const [{ data: cData }, { data: pData }] = await Promise.all([
     supabase.from("group_classes").select("*").gte("starts_at", from).lt("starts_at", to).order("starts_at"),
-    supabase.from("profiles").select("*").in("role", ["admin", "coach"]),
+    supabase.from("profiles").select("*").in("role", ["admin", "head_coach", "coach"]),
   ]);
   const classes = (cData ?? []) as GroupClass[];
   const ids = classes.map((c) => c.id);
   const { data: bData } = ids.length ? await supabase.from("class_bookings").select("*").in("class_id", ids) : { data: [] };
   const bookings = (bData ?? []) as ClassBooking[];
-  const coachName = new Map(((pData ?? []) as Profile[]).map((p) => [p.id, p.full_name || p.email]));
+  const coachList = (pData ?? []) as Profile[];
+  const coachName = new Map(coachList.map((p) => [p.id, p.full_name || p.email]));
 
-  const byDay = new Map<string, GroupClass[]>(days.map((d) => [d, []]));
-  for (const c of classes) byDay.get(classDay(c))?.push(c);
+  // Réservations regroupées par cours (évite de reparcourir toutes les réservations pour chaque cours)
+  const bookingsBy = new Map<string, ClassBooking[]>();
+  for (const b of bookings) {
+    const list = bookingsBy.get(b.class_id);
+    if (list) list.push(b);
+    else bookingsBy.set(b.class_id, [b]);
+  }
+  const stats = new Map(classes.map((c) => [c.id, classStats(bookingsBy.get(c.id) ?? [], c.id)]));
+  const statsOf = (id: string) => stats.get(id) ?? { taken: 0, waiting: 0 };
 
+  // Indicateurs : toute la semaine
   const active = classes.filter((c) => !c.cancelled);
   const totalSpots = active.reduce((s, c) => s + c.capacity, 0);
-  const taken = active.reduce((s, c) => s + classStats(bookings, c.id).taken, 0);
-  const waiting = active.reduce((s, c) => s + classStats(bookings, c.id).waiting, 0);
+  const taken = active.reduce((s, c) => s + statsOf(c.id).taken, 0);
+  const waiting = active.reduce((s, c) => s + statsOf(c.id).waiting, 0);
   const fill = totalSpots ? Math.round((taken / totalSpots) * 100) : 0;
 
-  const weekHref = (m: string, j?: number) => `/cours?semaine=${m}${j !== undefined ? `&jour=${j}` : ""}`;
+  // Recherche (insensible à la casse et aux accents) puis filtres
+  const needle = normName(q);
+  const searched = needle
+    ? classes.filter((c) => normName([c.title, c.category, c.room, c.level, c.coach_id ? coachName.get(c.coach_id) : null].filter(Boolean).join(" ")).includes(needle))
+    : classes;
+  const countBy = (list: GroupClass[], key: (c: GroupClass) => string | null) => {
+    const m = new Map<string, number>();
+    for (const c of list) {
+      const k = key(c);
+      if (k) m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return m;
+  };
+  const catCount = countBy(coach ? searched.filter((c) => c.coach_id === coach) : searched, (c) => c.category);
+  const coachCount = countBy(categorie ? searched.filter((c) => c.category === categorie) : searched, (c) => c.coach_id);
+  const shown = searched.filter((c) => (!categorie || c.category === categorie) && (!coach || c.coach_id === coach));
+  const categoryNames = [...new Set([...CATEGORY_NAMES, ...classes.map((c) => c.category)])];
+  const filters = [
+    { param: "categorie", label: "Catégorie", options: categoryNames.map((n) => ({ value: n, label: n, count: catCount.get(n) ?? 0 })) },
+    ...(coachList.length > 1 ? [{ param: "coach", label: "Coach", options: coachList.map((p) => ({ value: p.id, label: p.full_name || p.email, count: coachCount.get(p.id) ?? 0 })) }] : []),
+  ];
+
+  const byDay = new Map<string, GroupClass[]>(days.map((d) => [d, []]));
+  for (const c of shown) byDay.get(classDay(c))?.push(c);
+
+  // Navigation en conservant recherche et filtres
+  const weekHref = (m: string | null, j?: number) => {
+    const p = new URLSearchParams();
+    if (m) p.set("semaine", m);
+    if (j !== undefined) p.set("jour", String(j));
+    if (q) p.set("q", q);
+    if (categorie) p.set("categorie", categorie);
+    if (coach) p.set("coach", coach);
+    const qs = p.toString();
+    return qs ? `/cours?${qs}` : "/cours";
+  };
   const label = `${fmtDate(days[0]!, { day: "numeric", month: "short" })} – ${fmtDate(days[6]!, { day: "numeric", month: "short", year: "numeric" })}`;
 
   return (
     <>
+      <AgendaTabs active="cours" />
       <PageHeader
         title="Cours collectifs"
         subtitle="Planning de la semaine, réservations et listes d'attente."
@@ -62,39 +113,48 @@ export default async function ClassesPage({ searchParams }: { searchParams: Prom
         </p>
       )}
 
-      <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <Kpi label="Cours cette semaine" value={active.length} icon={<CalendarDays className="size-5" />} />
-        <Kpi label="Places réservées" value={`${taken}/${totalSpots}`} icon={<UsersRound className="size-5" />} />
-        <Kpi label="Taux de remplissage" value={`${fill} %`} tone="accent" icon={<Percent className="size-5" />} />
-        <Kpi label="En liste d'attente" value={waiting} tone="accent" icon={<Hourglass className="size-5" />} />
-      </div>
+      <Fold id="cours-kpis">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+          <Kpi label="Cours cette semaine" value={active.length} icon={<CalendarDays className="size-5" />} />
+          <Kpi label="Places réservées" value={`${taken}/${totalSpots}`} icon={<UsersRound className="size-5" />} />
+          <Kpi label="Taux de remplissage" value={`${fill} %`} tone="accent" icon={<Percent className="size-5" />} />
+          <Kpi label="En liste d'attente" value={waiting} tone="accent" icon={<Hourglass className="size-5" />} />
+        </div>
+      </Fold>
 
-      {/* Navigation semaine */}
-      <Card className="mb-4 flex flex-wrap items-center justify-between gap-3 p-3">
-        <div className="flex items-center gap-1">
-          <Link href={weekHref(addDayKey(monday, -7))} className={buttonClass("ghost", "size-10 px-0")} aria-label="Semaine précédente">
-            <ChevronLeft className="size-5" />
+      {/* Navigation semaine + recherche / filtres / export sur une ligne */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="flex h-10 shrink-0 items-center rounded-xl bg-white pe-3 ring-1 ring-line">
+          <Link href={weekHref(addDayKey(monday, -7))} className="grid size-10 place-items-center text-muted hover:text-ink" aria-label="Semaine précédente">
+            <ChevronLeft className="size-4 rtl:rotate-180" />
           </Link>
-          <Link href={weekHref(addDayKey(monday, 7))} className={buttonClass("ghost", "size-10 px-0")} aria-label="Semaine suivante">
-            <ChevronRight className="size-5" />
+          <Link href={weekHref(addDayKey(monday, 7))} className="grid size-10 place-items-center text-muted hover:text-ink" aria-label="Semaine suivante">
+            <ChevronRight className="size-4 rtl:rotate-180" />
           </Link>
-          <p className="ml-1 font-display text-[15px] font-bold capitalize text-ink">{label}</p>
+          <p className="ms-1 whitespace-nowrap font-display text-sm font-bold capitalize text-ink">{label}</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="hidden flex-wrap items-center gap-3 xl:flex">
-            {CATEGORY_NAMES.map((n) => (
-              <span key={n} className="flex items-center gap-1.5 text-xs font-medium text-muted">
-                <span className={cn("size-2.5 rounded-full", cat(n).dot)} /> {n}
-              </span>
-            ))}
-          </div>
-          {!inWeek && (
-            <Link href="/cours" className={buttonClass("secondary", "h-9")}>
-              Aujourd&apos;hui
-            </Link>
-          )}
-        </div>
-      </Card>
+        {!inWeek && (
+          <Link href={weekHref(null)} className={buttonClass("secondary", "h-10")}>
+            Aujourd&apos;hui
+          </Link>
+        )}
+        <ListToolbar
+          className="mb-0! min-w-0 flex-1"
+          placeholder="Cours, salle, coach…"
+          filters={filters}
+          exportKind="cours"
+          exportParams={{ from: days[0]!, to: days[6]! }}
+          right={
+            <div className="hidden flex-wrap items-center gap-3 2xl:flex">
+              {CATEGORY_NAMES.map((n) => (
+                <span key={n} className="flex items-center gap-1.5 text-xs font-medium text-muted">
+                  <span className={cn("size-2.5 rounded-full", cat(n).dot)} /> {n}
+                </span>
+              ))}
+            </div>
+          }
+        />
+      </div>
 
       {/* Mobile : onglets jours */}
       <div className="lg:hidden">
@@ -123,7 +183,7 @@ export default async function ClassesPage({ searchParams }: { searchParams: Prom
           return list.length ? (
             <div className="grid gap-3 sm:grid-cols-2 animate-fade-up">
               {list.map((c) => (
-                <ClassCard key={c.id} c={c} stats={classStats(bookings, c.id)} coach={c.coach_id ? coachName.get(c.coach_id) : null} />
+                <ClassCard key={c.id} c={c} stats={statsOf(c.id)} coach={c.coach_id ? coachName.get(c.coach_id) : null} />
               ))}
             </div>
           ) : (
@@ -158,7 +218,7 @@ export default async function ClassesPage({ searchParams }: { searchParams: Prom
               </div>
               <div className="flex flex-1 flex-col gap-2">
                 {list.map((c) => (
-                  <ClassCard key={c.id} c={c} stats={classStats(bookings, c.id)} coach={c.coach_id ? coachName.get(c.coach_id) : null} />
+                  <ClassCard key={c.id} c={c} stats={statsOf(c.id)} coach={c.coach_id ? coachName.get(c.coach_id) : null} />
                 ))}
                 <Link
                   href={`/cours/nouveau?date=${d}`}

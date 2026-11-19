@@ -468,6 +468,8 @@ create table if not exists notifications (
 create index if not exists notifications_idx on notifications(user_id, read, created_at desc);
 
 -- ---------- Formules, factures et paiements ----------
+-- NB : tables plus utilisées par l'application de coaching (l'argent est géré par le CRM général).
+--      Conservées pour ne pas perdre les données existantes ; ne pas les supprimer sans migration.
 create table if not exists packages (
   id             uuid primary key default gen_random_uuid(),
   name           text not null,
@@ -654,6 +656,7 @@ create policy "documents storage client" on storage.objects for select
 -- =============================================================
 
 -- Codes personnels des adhérents (QR d'accès + parrainage)
+-- NB : access_code, referral_code et les colonnes settings payment_provider / referral_* ne sont plus utilisés par l'application de coaching.
 alter table clients add column if not exists access_code text unique default upper(encode(gen_random_bytes(5), 'hex'));
 alter table clients add column if not exists referral_code text unique default upper(substr(encode(gen_random_bytes(4), 'hex'), 1, 6));
 
@@ -727,6 +730,8 @@ create table if not exists progress_photos (
 create index if not exists progress_photos_idx on progress_photos(client_id, taken_on);
 
 -- ---------- Abonnements & accès salle ----------
+-- NB : tables plus utilisées par l'application de coaching (l'argent est géré par le CRM général).
+--      Conservées pour ne pas perdre les données existantes ; ne pas les supprimer sans migration.
 create table if not exists memberships (
   id             uuid primary key default gen_random_uuid(),
   client_id      uuid not null references clients(id) on delete cascade,
@@ -753,6 +758,8 @@ create table if not exists gym_checkins (
 create index if not exists gym_checkins_idx on gym_checkins(client_id, checked_at desc);
 
 -- ---------- Paiement en ligne ----------
+-- NB : tables plus utilisées par l'application de coaching (l'argent est géré par le CRM général).
+--      Conservées pour ne pas perdre les données existantes ; ne pas les supprimer sans migration.
 create table if not exists online_payments (
   id           uuid primary key default gen_random_uuid(),
   invoice_id   uuid not null references invoices(id) on delete cascade,
@@ -877,6 +884,8 @@ create table if not exists workout_logs (
 create index if not exists workout_logs_idx on workout_logs(client_id, started_at desc);
 
 -- ---------- Parrainage ----------
+-- NB : tables plus utilisées par l'application de coaching (l'argent est géré par le CRM général).
+--      Conservées pour ne pas perdre les données existantes ; ne pas les supprimer sans migration.
 create table if not exists referrals (
   id                 uuid primary key default gen_random_uuid(),
   referrer_client_id uuid not null references clients(id) on delete cascade,

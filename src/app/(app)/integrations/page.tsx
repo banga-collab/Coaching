@@ -5,7 +5,6 @@ import {
   CalendarClock,
   CalendarDays,
   CheckCircle2,
-  CreditCard,
   EllipsisVertical,
   FileSpreadsheet,
   Info,
@@ -158,7 +157,6 @@ export default async function IntegrationsPage() {
                 {[
                   ["client.created", "Nouveau client"],
                   ["session.completed", "Séance réalisée"],
-                  ["invoice.paid", "Facture payée"],
                 ].map(([code, label]) => (
                   <li key={code} className="flex items-center gap-2">
                     <CheckCircle2 className="size-4 shrink-0 text-emerald-500" />
@@ -176,14 +174,10 @@ export default async function IntegrationsPage() {
       </div>
 
       {/* Bientôt */}
-      <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-5 grid gap-5 md:grid-cols-3">
         <InfoCard icon={<MessageCircle className="size-4" />} title="WhatsApp" status={<Badge tone="green" dot>Clic-pour-discuter</Badge>}>
           <p>Les boutons WhatsApp ouvrent une conversation pré-remplie avec le client (rappels, relances, bilans). Aucun compte supplémentaire requis.</p>
           <p className="text-xs text-muted">L&apos;envoi automatique (API WhatsApp Business) nécessite un compte Meta Business vérifié : bientôt disponible.</p>
-        </InfoCard>
-        <InfoCard icon={<CreditCard className="size-4" />} title="Paiement en ligne" status={<Badge tone="amber">Bientôt</Badge>}>
-          <p>Paiement des factures par carte via <b>CMI</b> (cartes marocaines) ou <b>Stripe</b>, avec passage automatique en « Payée ».</p>
-          <p className="text-xs text-muted">Requiert un contrat commerçant CMI ou un compte Stripe. En attendant, marque les paiements manuellement dans Facturation.</p>
         </InfoCard>
         <InfoCard icon={<CalendarClock className="size-4" />} title="Google Agenda bidirectionnel" status={<Badge tone="amber">Bientôt</Badge>}>
           <p>Créer ou déplacer une séance depuis Google Agenda et la retrouver dans Moov&apos;Up Coach.</p>

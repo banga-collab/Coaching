@@ -1,17 +1,19 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getProfile } from "@/lib/auth";
+import { getProfile, isManager } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getSettings } from "@/lib/settings";
-import { DEMO } from "@/lib/demo";
+import { serviceClient } from "@/lib/supabase/service";
+import { firstName, publicBookingDays, staffName, verifySlot } from "@/lib/planning";
+import { loadSessionTypes } from "@/lib/session-extras";
 import { waNumber } from "@/lib/whatsapp";
-import { str } from "@/lib/utils";
+import { fmtDate, fmtTime, str } from "@/lib/utils";
 import type { BookingRequest, Client } from "@/lib/types";
 import { askAboutClient, draftMessage, suggestAdjustments, summarizeClient, type ChatTurn, type DraftIntent } from "@/lib/ai";
-import { buildDays } from "@/components/platform/slots";
 import { isHex } from "@/components/platform/colors";
 import type { BookingState, SettingsState } from "@/components/platform/types";
+import type { PlanState } from "@/actions/planning";
 
 async function staffOnly() {
   const me = await getProfile();
@@ -61,20 +63,13 @@ export async function createBookingAction(_: BookingState, fd: FormData): Promis
   if (!waNumber(phone)) return { error: "Numéro de téléphone invalide (ex. 06 12 34 56 78)." };
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "Adresse e-mail invalide." };
 
-  const supabase = await createClient();
-  // Les visiteurs anonymes ne lisent pas les séances (RLS) : chevauchements vérifiés en démo seulement
-  let busy: { start: string; minutes: number }[] = [];
-  if (DEMO) try {
-    const from = new Date().toISOString();
-    const to = new Date(Date.now() + 15 * 86400000).toISOString();
-    const { data } = await supabase.from("sessions").select("starts_at, duration_min, status").gte("starts_at", from).lte("starts_at", to);
-    busy = (data ?? []).filter((s) => s.status !== "annulee").map((s) => ({ start: s.starts_at as string, minutes: Number(s.duration_min) || 60 }));
-  } catch {
-    busy = [];
-  }
-  const free = buildDays(settings.booking_hours, busy).some((d) => d.slots.some((s) => s.iso === wanted_at));
+  // Même calcul que la page publique : au moins un coach libre (disponibilités, congés, séances, cours collectifs),
+  // demandes en attente comptées comme prises. Lecture du planning avec le client « service » (RLS anonyme).
+  const reader = serviceClient() ?? (await createClient());
+  const free = (await publicBookingDays(reader, settings.booking_hours)).some((d) => d.slots.some((s) => s.iso === wanted_at));
   if (!free) return { error: "Ce créneau n'est plus disponible, merci d'en choisir un autre." };
 
+  const supabase = await createClient();
   const { error } = await supabase.from("booking_requests").insert({ full_name, phone, email, type, wanted_at, message, status: "nouvelle", session_id: null });
   if (error) return { error: "La demande n'a pas pu être envoyée. Réessayez ou contactez-nous sur WhatsApp." };
   revalidatePath("/reservations");
@@ -82,21 +77,37 @@ export async function createBookingAction(_: BookingState, fd: FormData): Promis
 }
 
 /* ===================== Réservations (staff) ===================== */
-export async function confirmBookingAction(fd: FormData) {
+const bookingWhen = (iso: string) => `${fmtDate(iso, { weekday: "short", day: "numeric", month: "short" })} à ${fmtTime(iso)}`;
+
+/**
+ * Confirmer une demande en ligne = affecter une séance, avec les mêmes règles que le planning :
+ * choix d'un coach, créneau vérifié (disponibilités, congés, séances, cours, coach actif, pas dans le passé),
+ * statut « acceptée » si on se l'affecte, sinon « en attente du coach » (assigned_by = celui qui confirme).
+ * Un coach (non manager) ne peut confirmer que pour lui-même.
+ */
+export async function confirmBookingAction(_: PlanState, fd: FormData): Promise<PlanState> {
   const me = await staffOnly();
   const id = String(fd.get("id") ?? "");
+  const coachId = str(fd.get("coach_id")) ?? me.id;
+  if (!isManager(me.role) && coachId !== me.id) return { error: "Seuls l'admin et le head coach peuvent confirmer pour un autre coach." };
   const supabase = await createClient();
   const { data } = await supabase.from("booking_requests").select("*").eq("id", id).maybeSingle();
   const b = data as BookingRequest | null;
-  if (!b || b.status !== "nouvelle") return;
+  if (!b || b.status !== "nouvelle") return { error: "Cette demande a déjà été traitée." };
+  if (new Date(b.wanted_at).getTime() < Date.now()) return { error: "L'horaire demandé est déjà passé : recontactez la personne pour fixer un autre rendez-vous, ou refusez la demande." };
   const settings = await getSettings();
+  const duration_min = Math.min(240, Math.max(15, Number(settings.booking_hours.slot) || 60));
 
-  // Client existant (même téléphone ou même e-mail) ou nouveau client
-  const { data: list } = await supabase.from("clients").select("id, phone, email");
+  const { check, free, coach } = await verifySlot(supabase, { coachId, startIso: b.wanted_at, durationMin: duration_min });
+  if (!check.ok) return { error: check.message, free };
+
+  // Client existant (même téléphone ou même e-mail) ou nouveau client rattaché au coach choisi
+  const { data: list } = await supabase.from("clients").select("id, phone, email, coach_id");
   const tel = waNumber(b.phone);
-  const existing = ((list ?? []) as Pick<Client, "id" | "phone" | "email">[]).find(
+  const existing = ((list ?? []) as Pick<Client, "id" | "phone" | "email" | "coach_id">[]).find(
     (c) => (tel && waNumber(c.phone) === tel) || (b.email && c.email?.toLowerCase() === b.email.toLowerCase()),
   );
+  if (existing && !isManager(me.role) && existing.coach_id !== me.id) return { error: "Cette personne est déjà suivie par un autre coach : demandez au head coach de confirmer la demande." };
   let clientId = existing?.id;
   if (!clientId) {
     const { data: created, error } = await supabase
@@ -105,36 +116,56 @@ export async function confirmBookingAction(fd: FormData) {
         full_name: b.full_name,
         phone: b.phone,
         email: b.email,
-        coach_id: me.id,
+        coach_id: coachId,
         status: "actif",
         start_date: new Date().toISOString().slice(0, 10),
         notes: `Créé depuis une réservation en ligne (${b.type})${b.message ? ` — « ${b.message} »` : ""}`,
       })
       .select("id")
       .single();
-    if (error || !created) return;
+    if (error || !created) return { error: error?.message ?? "Impossible de créer la fiche client." };
     clientId = created.id as string;
   }
 
+  const self = coachId === me.id;
+  const now = new Date().toISOString();
+  const typeDefault = (await loadSessionTypes(supabase, true)).find((t) => t.name === b.type)?.price_mad ?? null;
   const { data: session, error: sErr } = await supabase
     .from("sessions")
     .insert({
       client_id: clientId,
-      coach_id: me.id,
+      coach_id: coachId,
       starts_at: b.wanted_at,
-      duration_min: Number(settings.booking_hours.slot) || 60,
+      duration_min,
       type: b.type,
-      status: "planifiee",
+      status: self ? "acceptee" : "planifiee",
+      assigned_by: me.id,
+      responded_at: self ? now : null,
+      rpe: null,
       notes: b.message ? `Réservation en ligne : ${b.message}` : "Réservation en ligne",
+      ...(typeDefault !== null ? { price_mad: typeDefault } : {}),
     })
     .select("id")
     .single();
-  if (sErr || !session) return;
+  if (sErr || !session) return { error: sErr?.message ?? "Impossible de créer la séance." };
 
   await supabase.from("booking_requests").update({ status: "confirmee", session_id: session.id }).eq("id", id);
+  if (!self) {
+    await supabase.from("notifications").insert({
+      user_id: coachId,
+      title: "Nouvelle séance à confirmer",
+      body: `${b.full_name} · ${bookingWhen(b.wanted_at)} · ${duration_min} min (réservation en ligne, affectée par ${firstName(me.full_name)})`,
+      link: `/seances/${session.id}`,
+      kind: "reservation",
+      read: false,
+    });
+  }
   revalidatePath("/reservations");
   revalidatePath("/seances");
+  revalidatePath("/planning");
   revalidatePath("/", "layout");
+  const who = coach ? firstName(staffName(coach)) : "le coach";
+  return { ok: self ? `Demande confirmée : séance ajoutée à ton planning (${bookingWhen(b.wanted_at)}).` : `Demande confirmée : séance affectée à ${who}, en attente de sa réponse.`, sessionId: session.id as string };
 }
 
 export async function refuseBookingAction(fd: FormData) {
@@ -192,8 +223,6 @@ export async function saveSettingsAction(_: SettingsState, fd: FormData): Promis
       whatsapp: str(fd.get("whatsapp")),
       email: str(fd.get("email"))?.toLowerCase() ?? null,
       address: str(fd.get("address")),
-      ice: str(fd.get("ice")),
-      invoice_footer: str(fd.get("invoice_footer")),
       booking_enabled,
       booking_types: types,
       booking_hours: { start, end, days: [...new Set(days)], slot },

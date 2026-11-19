@@ -8,10 +8,12 @@ import { cn, dayKey, fmtDate } from "@/lib/utils";
 import { Card, Empty, PageHeader } from "@/components/ui";
 import { MemberClassCard } from "@/components/classes/member-class-card";
 import { addDayKey, classDay, classStats, rangeIso } from "@/components/classes/categories";
+import { getT } from "@/lib/i18n";
 
 export const metadata = { title: "Cours collectifs" };
 
 export default async function MyClassesPage({ searchParams }: { searchParams: Promise<{ jour?: string }> }) {
+  const tr = await getT();
   const { jour } = await searchParams;
   const me = await getProfile();
   if (me.role !== "client") redirect("/cours");
@@ -20,9 +22,9 @@ export default async function MyClassesPage({ searchParams }: { searchParams: Pr
   if (!cData) {
     return (
       <>
-        <PageHeader title="Cours collectifs" />
+        <PageHeader title={tr("moi.classes")} />
         <Card>
-          <Empty icon={<CalendarDays className="size-6" />} title="Ton dossier n'est pas encore relié" text="Demande à ton coach de relier ton compte pour réserver tes cours." />
+          <Empty icon={<CalendarDays className="size-6" />} title={tr("moi.notLinked")} text="Demande à ton coach de relier ton compte pour réserver tes cours." />
         </Card>
       </>
     );
@@ -86,7 +88,7 @@ export default async function MyClassesPage({ searchParams }: { searchParams: Pr
 
   return (
     <>
-      <PageHeader title="Cours collectifs" subtitle={`Réserve ta place, ${client.full_name.split(" ")[0]} ! CrossFit, HIIT, yoga…`} />
+      <PageHeader title={tr("moi.classes")} subtitle={tr("moi.classes.sub", { name: client.full_name.split(" ")[0] ?? "" })} />
 
       {upcoming.length > 0 && (
         <section className="mb-6 animate-fade-up">

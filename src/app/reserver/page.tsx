@@ -1,14 +1,13 @@
 import { CalendarOff, Phone } from "lucide-react";
 import { getSettings } from "@/lib/settings";
 import { createClient } from "@/lib/supabase/server";
-import { DEMO } from "@/lib/demo";
+import { serviceClient } from "@/lib/supabase/service";
+import { publicBookingDays } from "@/lib/planning";
 import { Card } from "@/components/ui";
 import { WhatsAppButton } from "@/components/modules/whatsapp-button";
-import { buildDays } from "@/components/platform/slots";
 import { BookingForm } from "./booking-form";
 
-export default async function ReserverPage({ searchParams }: { searchParams: Promise<{ ref?: string }> }) {
-  const ref = ((await searchParams).ref ?? "").replace(/[^A-Za-z0-9]/g, "").slice(0, 20);
+export default async function ReserverPage() {
   const s = await getSettings();
 
   if (!s.booking_enabled || !s.booking_types.length) {
@@ -31,22 +30,9 @@ export default async function ReserverPage({ searchParams }: { searchParams: Pro
     );
   }
 
-  // Séances déjà prévues : lisibles en démo ; en production les visiteurs anonymes n'y ont pas accès (RLS)
-  let busy: { start: string; minutes: number }[] = [];
-  if (DEMO) {
-    try {
-      const supabase = await createClient();
-      const { data } = await supabase
-        .from("sessions")
-        .select("starts_at, duration_min, status")
-        .gte("starts_at", new Date().toISOString())
-        .lte("starts_at", new Date(Date.now() + 15 * 86400000).toISOString());
-      busy = (data ?? []).filter((x) => x.status !== "annulee").map((x) => ({ start: x.starts_at as string, minutes: Number(x.duration_min) || 60 }));
-    } catch {
-      busy = [];
-    }
-  }
-  const days = buildDays(s.booking_hours, busy);
+  // Horaires où au moins un coach est libre (calcul côté serveur). Un visiteur anonyme ne lit pas le planning
+  // sous RLS : on utilise le client « service » (clé SUPABASE_SERVICE_ROLE_KEY) ; sans elle, horaires d'ouverture seuls.
+  const days = await publicBookingDays(serviceClient() ?? (await createClient()), s.booking_hours);
 
-  return <BookingForm types={s.booking_types} days={days} brand={s.brand_name} whatsapp={s.whatsapp} slot={s.booking_hours.slot} referral={ref || undefined} />;
+  return <BookingForm types={s.booking_types} days={days} brand={s.brand_name} whatsapp={s.whatsapp} slot={s.booking_hours.slot} />;
 }

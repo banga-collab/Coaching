@@ -49,7 +49,7 @@ async function loadData(clientId: string): Promise<Data | null> {
     supabase.from("measurements").select("*").eq("client_id", clientId).order("measured_on", { ascending: false }).limit(6),
     supabase.from("health_checks").select("*").eq("client_id", clientId).order("checked_on", { ascending: false }).limit(3),
     supabase.from("sessions").select("*").eq("client_id", clientId).lte("starts_at", nowIso).order("starts_at", { ascending: false }).limit(10),
-    supabase.from("sessions").select("*").eq("client_id", clientId).gt("starts_at", nowIso).eq("status", "planifiee").order("starts_at", { ascending: true }).limit(1),
+    supabase.from("sessions").select("*").eq("client_id", clientId).gt("starts_at", nowIso).in("status", ["planifiee", "acceptee"]).order("starts_at", { ascending: true }).limit(1),
     supabase.from("goals").select("*").eq("client_id", clientId).order("created_at", { ascending: false }).limit(8),
     supabase.from("client_programs").select("*").eq("client_id", clientId).eq("status", "actif").order("start_date", { ascending: false }).limit(1),
   ]);
@@ -148,7 +148,7 @@ function computeFacts(d: Data) {
   const strength = d.meas.filter((m) => m.squat_kg !== null);
   const sqDelta = strength.length > 1 ? Number(strength.at(-1)!.squat_kg) - Number(strength[0]!.squat_kg) : null;
 
-  const past = d.sessions.filter((s) => s.status !== "planifiee" && s.status !== "annulee");
+  const past = d.sessions.filter((s) => ["realisee", "absent"].includes(s.status));
   const done = past.filter((s) => s.status === "realisee");
   const absent = past.filter((s) => s.status === "absent");
   const rate = past.length ? Math.round((done.length / past.length) * 100) : null;
